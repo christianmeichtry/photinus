@@ -25,7 +25,7 @@
     @keyframes flash{0%,100%{opacity:.35}50%{opacity:1}}
   }
   h1{font-size:1.2rem;font-weight:600}
-  #field{display:block;width:100%;height:110px;margin:0 0 1rem;border-radius:8px}
+  #field{display:block;width:100%;height:260px;margin:0 0 1rem;border-radius:8px;background:radial-gradient(120% 90% at 50% 10%, rgba(16,40,48,.55), transparent 70%)}
   .summary{font-family:var(--mono);font-size:.88rem;color:var(--dim);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
   .summary b{font-weight:600;color:var(--ink)}
   .pill{display:inline-block;padding:.12rem .65rem;border-radius:99px;font-weight:700;font-size:.82rem}
@@ -123,18 +123,45 @@ function drawField(t){
   fctx.setTransform(dpr,0,0,dpr,0,0);
   fctx.clearRect(0,0,W,H);
   const tt = t/1000;
+  // Faint mesh lines first, under the flies: the gossip paths. Links to a
+  // dead box fade toward ember.
+  const pts = [...flies.values()].map(f => ({x:f.x*W, y:f.y*(H-30)+8, dead:f.mode==="dead"}));
+  for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++){
+    const a=pts[i], b=pts[j], anyDead = a.dead||b.dead;
+    fctx.beginPath();
+    fctx.strokeStyle = anyDead ? "rgba(224,106,80,.10)" : "rgba(232,226,210,.07)";
+    fctx.lineWidth = 1;
+    fctx.moveTo(a.x,a.y); fctx.lineTo(b.x,b.y); fctx.stroke();
+  }
   for (const [name,f] of flies){
-    if (!reduced && f.mode!=="dead"){
-      f.vx += (Math.random()-.5)*.00012; f.vy += (Math.random()-.5)*.00009;
-      f.vx = Math.max(-.0012, Math.min(.0012, f.vx));
-      f.vy = Math.max(-.0008, Math.min(.0008, f.vy));
-      f.x += f.vx; f.y += f.vy;
-      if (f.x < .04 || f.x > .96) f.vx *= -1;
-      if (f.y < .12 || f.y > .72) f.vy *= -1;
-      f.x = Math.max(.04, Math.min(.96, f.x));
-      f.y = Math.max(.12, Math.min(.72, f.y));
+    if (f.mode==="dead"){
+      // Dead fireflies fall and lie on the ground.
+      const ground = .86;
+      if (reduced){ f.y = ground; f.vx = f.vy = 0; }
+      else if (f.y < ground){
+        f.vy = (f.vy||0) + .00045;
+        f.y = Math.min(ground, f.y + f.vy);
+        f.x += (f.vx||0)*.3;
+      } else { f.vx = f.vy = 0; f.y = ground; }
     }
-    const x = f.x*W, y = f.y*(H-26)+8;
+    if (!reduced && f.mode!=="dead"){
+      // Insect motion: sudden darts that glide out, plus a constant
+      // nervous jitter, instead of smooth ballistic drift.
+      if (Math.random() < .015){
+        const a = Math.random()*6.283, sp = .001 + Math.random()*.0022;
+        f.vx = Math.cos(a)*sp; f.vy = Math.sin(a)*sp;
+      }
+      f.vx *= .984; f.vy *= .984;
+      // Darts glide out over a slow woven wander, so the path curves like
+      // a living thing instead of a billiard ball.
+      f.x += f.vx + Math.sin(tt*.6 + f.jit)*.0005 + (Math.random()-.5)*.0006;
+      f.y += f.vy + Math.cos(tt*.45 + f.jit*1.7)*.0005 + (Math.random()-.5)*.0006;
+      if (f.x < .04 || f.x > .96) f.vx *= -1;
+      if (f.y < .06 || f.y > .88) f.vy *= -1;
+      f.x = Math.max(.04, Math.min(.96, f.x));
+      f.y = Math.max(.06, Math.min(.88, f.y));
+    }
+    const x = f.x*W, y = f.y*(H-30)+8;
     let color = "#FFC24B", alpha, r = 4.5;
     if (f.mode==="dead"){ color = "#E06A50"; alpha = .95; }
     else if (f.mode==="ghost"){ color = "#8FA5A3"; alpha = .35; }
@@ -151,11 +178,11 @@ function drawField(t){
     fctx.arc(x, y, r, 0, 7);
     fctx.fill();
     fctx.shadowBlur = 0;
-    fctx.globalAlpha = .9;
+    fctx.globalAlpha = f.mode==="dead" ? .6 : .4;
     fctx.font = "10px ui-monospace,Menlo,monospace";
     fctx.textAlign = "center";
     fctx.fillStyle = f.mode==="dead" ? "#E06A50" : "#8FA5A3";
-    fctx.fillText(name.split(".")[0].toUpperCase(), x, H-6);
+    fctx.fillText(name.split(".")[0].toUpperCase(), x, y + 18);
   }
   requestAnimationFrame(drawField);
 }

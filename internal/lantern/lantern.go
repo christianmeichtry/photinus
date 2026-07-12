@@ -331,7 +331,11 @@ type Status struct {
 	Swarm         []string          `json:"swarm"`
 	LastKnownSize int               `json:"last_known_size"`
 	Versions      map[string]string `json:"versions,omitempty"`
-	Subjects      []SubjectStatus   `json:"subjects"`
+	// Endpoints maps each lantern to its advertised host:port. A client
+	// that reached one lantern uses this to reach every other directly,
+	// so a single configured address is never a single point of failure.
+	Endpoints map[string]string `json:"endpoints,omitempty"`
+	Subjects  []SubjectStatus   `json:"subjects"`
 }
 
 // Status answers from local memory. It makes no network calls and must never
@@ -354,6 +358,7 @@ func (l *Lantern) Status() Status {
 		sort.Strings(st.Swarm)
 		lastKnown = sw.LastKnownSize()
 		st.Versions = sw.MemberVersions()
+		st.Endpoints = sw.MemberAddrs()
 	}
 	st.LastKnownSize = lastKnown
 

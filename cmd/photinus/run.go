@@ -42,7 +42,8 @@ func runCmd(args []string) error {
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
-	panel := fs.String("panel", "", "serve the read-only web status panel on this address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
+	panel := fs.String("panel", "", "also serve the read-only web status panel on this extra address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
+	panelToken := fs.String("panel-token", os.Getenv("PHOTINUS_PANEL_TOKEN"), "bearer token guarding status data; when set, the gossip port also answers the panel and /status.json (app and browser reach the swarm through the one open port). Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_PANEL_TOKEN")
 	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime) without naming them")
 	var seeds, watches stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
@@ -104,12 +105,20 @@ func runCmd(args []string) error {
 		Logger:   logger,
 	})
 
+	// A token opens the panel on the gossip port itself, so the app and a
+	// browser reach the swarm through the one port every box already opens.
+	var muxHTTP http.Handler
+	if *panelToken != "" {
+		muxHTTP = statusHandler(*panelToken, lan)
+	}
+
 	sw, err := swarm.Join(swarm.Config{
 		ID:        *id,
 		Bind:      *bind,
 		Seeds:     seeds,
 		Advertise: *advertise,
 		Key:       *key,
+		HTTP:      muxHTTP,
 		OnFlash:   lan.ReceiveFlash,
 		Logger:    logger,
 	})
@@ -126,13 +135,16 @@ func runCmd(args []string) error {
 
 	var panelSrv *http.Server
 	if *panel != "" {
-		panelSrv, err = servePanel(*panel, lan)
+		panelSrv, err = servePanel(*panel, *panelToken, lan)
 		if err != nil {
 			statusSrv.Close()
 			sw.Leave()
 			return err
 		}
 		logger.Printf("web panel lit at http://%s", *panel)
+	}
+	if *panelToken != "" {
+		logger.Printf("panel and status answered on the gossip port %s, bearer token required", *bind)
 	}
 
 	logger.Printf("lantern %s is lit, gossiping on %s, status socket %s", *id, *bind, sockPath)

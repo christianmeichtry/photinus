@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>photinus</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23FFC24B'/%3E%3C/svg%3E">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="theme-color" content="#0B1F24">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="photinus">
 <style>
   :root{
     --dusk:#0B1F24; --card:#102830; --rule:rgba(232,226,210,.13);
@@ -57,6 +63,26 @@
   .st.warn span{background:var(--warn);color:var(--dusk)}
   .st.down span{background:var(--down);color:var(--dusk)}
   .st.stale span{background:transparent;border:1px solid var(--rule);color:var(--dim)}
+  /* A pill glitches once the instant its state changes; a stale ? keeps a
+     faint idle flicker, since its signal is genuinely breaking up. */
+  @media (prefers-reduced-motion: no-preference){
+    .st.glitch span, .pill.glitch{animation:glitch .5s steps(2,end) 1}
+    .st.stale span{animation:glitch-idle 2.6s steps(1) infinite}
+  }
+  @keyframes glitch{
+    0%{transform:translate(0,0);opacity:1;text-shadow:none}
+    20%{transform:translate(-2px,1px);opacity:.6;text-shadow:2px 0 var(--down),-2px 0 var(--up)}
+    40%{transform:translate(2px,-1px);opacity:1;text-shadow:-2px 0 var(--warn),2px 0 var(--up)}
+    60%{transform:translate(-1px,0);opacity:.5;text-shadow:1px 0 var(--down)}
+    80%{transform:translate(1px,0);opacity:1;text-shadow:-1px 0 var(--up)}
+    100%{transform:translate(0,0);opacity:1;text-shadow:none}
+  }
+  @keyframes glitch-idle{
+    0%,100%{transform:translate(0,0);opacity:.7;text-shadow:none}
+    92%{transform:translate(0,0);opacity:.7}
+    94%{transform:translate(-1px,0);opacity:1;text-shadow:1px 0 var(--down),-1px 0 var(--up)}
+    97%{transform:translate(1px,0);opacity:.45;text-shadow:-1px 0 var(--warn)}
+  }
   .chk{font-family:var(--mono);font-size:.88rem;width:7rem;color:var(--ink)}
   .det{color:var(--dim)}
   .det .agree{opacity:.65;font-family:var(--mono);font-size:.8rem}
@@ -74,6 +100,17 @@
   .services .det{display:block;margin-top:.1rem}
   footer{margin-top:1.6rem;font-family:var(--mono);font-size:.72rem;color:var(--dim);display:flex;gap:1.5rem;flex-wrap:wrap}
   #err{display:none;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--down);border-radius:8px;color:var(--down);font-size:.85rem}
+  #gear{margin-left:auto;background:none;border:0;color:var(--dim);font-size:1rem;cursor:pointer;padding:0}
+  #gear:hover{color:var(--warn)}
+  dialog{background:var(--card);color:var(--ink);border:1px solid var(--rule);border-radius:10px;max-width:26rem;width:92%;padding:1.3rem}
+  dialog::backdrop{background:rgba(11,31,36,.72)}
+  dialog h2{font-size:1rem;font-weight:650;margin-bottom:.5rem}
+  .dlghint{color:var(--dim);font-size:.82rem;margin-bottom:1rem}
+  .doorrow{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.7rem;font-family:var(--mono);font-size:.76rem;color:var(--dim)}
+  .doorrow input{background:var(--dusk);border:1px solid var(--rule);border-radius:6px;color:var(--ink);padding:.45rem .55rem;font-family:var(--mono);font-size:.82rem}
+  .dlgbtns{display:flex;justify-content:flex-end;gap:.6rem;margin-top:1rem}
+  .dlgbtns button{background:transparent;border:1px solid var(--rule);border-radius:6px;color:var(--ink);padding:.4rem .9rem;cursor:pointer;font-size:.85rem}
+  .dlgbtns .primary{background:var(--warn);border-color:var(--warn);color:var(--dusk);font-weight:650}
 </style>
 </head>
 <body>
@@ -89,10 +126,22 @@
   <div class="grid services" id="services"></div>
   <footer>
     <span id="served"></span>
+    <span id="via"></span>
     <span id="stamp"></span>
     <span>read-only · answered from local memory</span>
+    <button id="gear" type="button" title="doors and tokens" onclick="openSettings()">⚙</button>
   </footer>
 </div>
+
+<dialog id="settings">
+  <h2>doors</h2>
+  <p class="dlghint">The app reaches the swarm through any lantern. Add each door's address and its bearer token; if one goes dark the panel tries the next.</p>
+  <div id="doorrows"></div>
+  <div class="dlgbtns">
+    <button type="button" onclick="document.getElementById('settings').close()">cancel</button>
+    <button type="button" class="primary" onclick="saveSettings()">save</button>
+  </div>
+</dialog>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
@@ -203,7 +252,16 @@ const distroLogos = {
 };
 distroLogos.raspbian = distroLogos.ubuntu;
 
+// A pill glitches on the render right after its state changes. Subjects are
+// keyed so a change is a change, not the whole board glitching on first load.
+let lastState = new Map();
 function render(st){
+  const nowState = new Map();
+  const mark = (key, token) => {
+    const changed = lastState.has(key) && lastState.get(key) !== token;
+    nowState.set(key, token);
+    return changed ? " glitch" : "";
+  };
   $("who").innerHTML = `lantern <span class="pill name" title="${esc(st.id)}">${esc(st.id.split(".")[0].toUpperCase())}</span>`;
   const downs = st.subjects.filter(s=>s.voters && s.state==="down").length;
   const warns = st.subjects.filter(s=>s.voters && s.state==="warn").length;
@@ -232,10 +290,12 @@ function render(st){
     const h = hosts[name];
     let meta = "", live = "", bad = "";
     if (h.live){
-      if (!h.live.voters) live = `<span class="pill ghost">no fresh word</span>`;
-      else if (h.live.state==="down"){ live = `<span class="pill down">DARK · ${h.live.votes}/${h.live.voters}, quorum ${h.live.needed}</span>`; bad="trouble"; }
-      else if (h.live.votes>0) live = `<span class="pill warn">suspected ${h.live.votes}/${h.live.voters}</span>`;
-      else live = `<span class="pill quiet">lit · ${h.live.voters >= st.swarm.length-1 ? "all vouch" : h.live.voters + " vouch"}</span>`;
+      const lt = !h.live.voters ? "ghost" : h.live.state==="down" ? "dark" : h.live.votes>0 ? "sus" : "lit";
+      const lg = mark("live|"+name, lt);
+      if (!h.live.voters) live = `<span class="pill ghost${lg}">no fresh word</span>`;
+      else if (h.live.state==="down"){ live = `<span class="pill down${lg}">DARK · ${h.live.votes}/${h.live.voters}, quorum ${h.live.needed}</span>`; bad="trouble"; }
+      else if (h.live.votes>0) live = `<span class="pill warn${lg}">suspected ${h.live.votes}/${h.live.voters}</span>`;
+      else live = `<span class="pill quiet${lg}">lit · ${h.live.voters >= st.swarm.length-1 ? "all vouch" : h.live.voters + " vouch"}</span>`;
       live = `<span class="liv">${live}</span>`;
     }
     if (h.skew && h.skew.voters && (h.skew.state!=="up"||h.skew.votes>0)){
@@ -245,8 +305,9 @@ function render(st){
     if (!bad && h.rows.some(s => s.voters && (s.state==="warn" || s.votes>0))) bad = "warned";
     const rows = h.rows.map(s => {
       const [w,cls] = word(s);
+      const g = mark(name+"|"+s.check+"|"+s.target, w);
       const label = s.check === "disk:/" ? "disk" : s.check.startsWith("disk:") ? "disk " + s.check.slice(5) : s.check;
-      return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk">${esc(label)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
+      return `<tr><td class="st ${cls}${g}"><span>${w}</span></td><td class="chk">${esc(label)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
     }).join("");
     let mode = "lit";
     if (h.live){
@@ -282,25 +343,98 @@ function render(st){
   $("services").innerHTML = services.length ? `<div class="card"><h2>watched services</h2><table>` +
     services.map(s => {
       const [w,cls] = word(s);
+      const g = mark("svc|"+s.check+"|"+s.target, w);
       const agree = !s.voters ? "no fresh word" : s.authority ? "own report"
         : (s.state!=="up"||s.votes>0) ? `${s.votes}/${s.voters}, quorum ${s.needed}` : `${s.voters} lantern${s.voters>1?"s":""}`;
-      return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk"><span class="typ">${svcType(s)}</span>${esc(s.target)}<span class="det">${esc(s.detail||"")} <span class="agree">· ${agree}</span></span></td></tr>`;
+      return `<tr><td class="st ${cls}${g}"><span>${w}</span></td><td class="chk"><span class="typ">${svcType(s)}</span>${esc(s.target)}<span class="det">${esc(s.detail||"")} <span class="agree">· ${agree}</span></span></td></tr>`;
     }).join("") + `</table></div>` : "";
 
   $("served").textContent = "served by " + st.id.split(".")[0].toUpperCase();
   $("stamp").textContent = "refreshed " + new Date().toLocaleTimeString();
+  lastState = nowState;
 }
 
-async function tick(){
-  try{
-    const r = await fetch("status.json", {cache:"no-store"});
-    if (!r.ok) throw new Error(r.status);
-    render(await r.json());
-    $("err").style.display = "none";
-  }catch(e){
-    $("err").style.display = "block";
-  }
+// Doors and tokens. The page's own origin is always the first door; every
+// endpoint the swarm reports is remembered so failover survives a reload
+// even when the favorite door is already dark. Tokens are per origin.
+const LS_DOORS = "photinus.doors", LS_TOKENS = "photinus.tokens";
+const ownOrigin = location.origin;
+function loadDoors(){ try{ return JSON.parse(localStorage.getItem(LS_DOORS)) || []; }catch{ return []; } }
+function loadTokens(){ try{ return JSON.parse(localStorage.getItem(LS_TOKENS)) || {}; }catch{ return {}; } }
+function saveDoors(d){ localStorage.setItem(LS_DOORS, JSON.stringify([...new Set(d)])); }
+function saveTokens(t){ localStorage.setItem(LS_TOKENS, JSON.stringify(t)); }
+
+// A browser page served over https cannot fetch a plain-http door
+// (mixed content), so those are quietly skipped. The native app has no
+// such limit and uses every door.
+function usableDoors(){
+  const https = ownOrigin.startsWith("https:");
+  const all = [ownOrigin, ...loadDoors()].filter((v,i,a)=>a.indexOf(v)===i);
+  return all.filter(o => !https || o.startsWith("https:"));
 }
+
+async function fetchDoor(origin){
+  const tokens = loadTokens();
+  const headers = {};
+  if (tokens[origin]) headers["Authorization"] = "Bearer " + tokens[origin];
+  const r = await fetch(origin.replace(/\/$/,"") + "/status.json", {cache:"no-store", headers});
+  if (r.status === 401) { const e = new Error("unauthorized"); e.code = 401; e.origin = origin; throw e; }
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+let activeDoor = ownOrigin;
+async function tick(){
+  const doors = usableDoors();
+  // Try the door that worked last, then the rest.
+  const ordered = [activeDoor, ...doors.filter(d => d !== activeDoor)];
+  let lastErr;
+  for (const origin of ordered){
+    try{
+      const st = await fetchDoor(origin);
+      activeDoor = origin;
+      // Learn every peer's door for next time.
+      if (st.endpoints){
+        const scheme = origin.startsWith("https:") ? "https://" : "http://";
+        const learned = Object.values(st.endpoints).map(hp => scheme + hp);
+        saveDoors([...loadDoors(), ...learned]);
+      }
+      render(st);
+      $("err").style.display = "none";
+      $("via").textContent = origin === ownOrigin ? "" : "· via " + origin.replace(/^https?:\/\//,"");
+      return;
+    }catch(e){
+      lastErr = e;
+      if (e.code === 401){ openSettings(e.origin); return; }
+    }
+  }
+  $("err").style.display = "block";
+}
+
+// Settings: doors and their tokens.
+function openSettings(focusOrigin){
+  const dlg = $("settings"), tokens = loadTokens();
+  const doors = usableDoors();
+  $("doorrows").innerHTML = doors.map(o => `
+    <label class="doorrow"><span>${o===ownOrigin?"this lantern":o.replace(/^https?:\/\//,"")}</span>
+    <input data-origin="${o}" type="password" placeholder="bearer token" value="${tokens[o]||""}"></label>`).join("")
+    + `<label class="doorrow"><span>add door</span><input id="newdoor" type="url" placeholder="https://lantern:7946"></label>`;
+  if (typeof dlg.showModal === "function" && !dlg.open) dlg.showModal();
+  if (focusOrigin){ const f = $("doorrows").querySelector(`[data-origin="${focusOrigin}"]`); if (f) f.focus(); }
+}
+function saveSettings(){
+  const tokens = loadTokens();
+  $("doorrows").querySelectorAll("[data-origin]").forEach(i => {
+    if (i.value) tokens[i.dataset.origin] = i.value; else delete tokens[i.dataset.origin];
+  });
+  const nd = $("newdoor");
+  if (nd && nd.value) saveDoors([...loadDoors(), nd.value.replace(/\/$/,"")]);
+  saveTokens(tokens);
+  $("settings").close();
+  tick();
+}
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
 tick();
 setInterval(tick, 2000);
 </script>

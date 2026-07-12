@@ -206,3 +206,5 @@ takeover when the elected sender dies. The history is in docs/design.md.
 - `site/index.html` is the landing page, a single static file, no build step. If you touch
   it, it stays a single file with no dependencies.
 - `docs/design.md` is the thinking. When a design decision gets made in code, update it.
+- `docs/faq.md` is troubleshooting knowledge earned on real fleets. When a support
+  question gets answered twice, it goes there.

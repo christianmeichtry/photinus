@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"runtime"
 	"strconv"
 	"strings"
@@ -41,6 +42,11 @@ type Config struct {
 	// lanterns without the same key cannot join or inject anything. The
 	// actual cipher key is derived from it, so any passphrase works.
 	Key string
+	// HTTP, when set, is served on the gossip port itself: the mux sniffs
+	// each TCP connection and routes memberlist traffic to memberlist and
+	// HTTP to this handler. One open port serves both. Nil leaves the
+	// gossip port speaking gossip only.
+	HTTP http.Handler
 	// OnFlash is called for every flash payload received from a peer. It must
 	// not block; copy is already taken care of.
 	OnFlash func(payload []byte)
@@ -150,6 +156,15 @@ func Join(cfg Config) (*Swarm, error) {
 		mc.SecretKey = sum[:]
 	}
 
+	if cfg.HTTP != nil {
+		mux, err := newMuxTransport(host, port, cfg.HTTP, log.New(warnFilter{logger}, "", 0))
+		if err != nil {
+			return nil, fmt.Errorf("starting the shared gossip and status port on %s: %w", cfg.Bind, err)
+		}
+		mc.Transport = mux
+		logger.Printf("status clients answered on the gossip port itself")
+	}
+
 	ml, err := memberlist.Create(mc)
 	if err != nil {
 		return nil, fmt.Errorf("starting gossip on %s: %w", cfg.Bind, err)
@@ -217,6 +232,18 @@ func (s *Swarm) LastKnownSize() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.everSeen)
+}
+
+// MemberAddrs maps each currently alive lantern to its advertised
+// host:port, the address the swarm itself uses to reach it. A status
+// client that can reach one lantern can derive every other door from
+// this, NAT remaps and custom ports included.
+func (s *Swarm) MemberAddrs() map[string]string {
+	out := make(map[string]string)
+	for _, n := range s.ml.Members() {
+		out[n.Name] = net.JoinHostPort(n.Addr.String(), strconv.Itoa(int(n.Port)))
+	}
+	return out
 }
 
 // MemberVersions maps each currently alive lantern to the release it

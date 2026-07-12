@@ -295,6 +295,36 @@ per-check overridable) warns days before the outage would happen. The
 expiry judgment is a pure function over the leaf certificate so the
 clock-dependent logic is table-tested without a network.
 
+### HTTP on the gossip port: one open port, every door
+
+A phone app should need one address and nothing else: no second port to
+open, no DNS, no reverse proxy. So the status HTTP shares the port gossip
+already uses. memberlist's TCP stream messages begin with a binary message
+type in the low teens; an HTTP request begins with an ASCII method letter.
+One peeked byte tells them apart, so the lantern wraps memberlist's TCP
+transport, sniffs each accepted connection, and routes gossip to memberlist
+and HTTP to the status handler. UDP is untouched. The peeked byte is always
+replayed, so memberlist's streams are byte-identical to before; a short
+read deadline keeps a silent connection from wedging the accept loop.
+
+This makes rule 2 true for clients, not just for `status`: the status JSON
+carries every member's advertised `host:port` (the swarm already tracks
+these, NAT remaps and custom ports included), so an app handed one
+lantern's address learns every other door from the first reply and fails
+over directly when its favorite goes dark. A single configured address is
+never a single point of failure.
+
+The HTTP surface only exists when a `-panel-token` is set: the data is
+bearer-guarded (constant-time compare), the shell and icons stay open so a
+browser can load then prompt for the token, and CORS is permissive so one
+door can be queried cross-origin by a client holding the token. The gossip
+port answering HTTP means a scanner gets a 401 instead of a dropped
+connection, which is acceptable: read-only, token-gated, and the gossip
+side is still protected by the swarm key. The token crosses in plaintext
+for now; the fast-follow is self-signed TLS on the same mux (a TLS
+ClientHello is also first-byte distinguishable, byte 0x16) with the app
+pinning the certificate.
+
 ### The web panel: a dashboard with no dashboard host
 
 `-panel addr` makes a lantern serve a read-only HTML panel plus

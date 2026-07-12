@@ -115,9 +115,11 @@ func Join(cfg Config) (*Swarm, error) {
 			var picked net.IP
 			for _, ip := range ips {
 				// Debian-family boxes map their own hostname to 127.0.1.1
-				// in /etc/hosts. Advertising loopback tells every peer to
-				// probe itself, and the whole swarm quietly dies of it.
-				if ip.IsLoopback() {
+				// in /etc/hosts, and mDNS names on Macs can resolve to a
+				// dead interface's self-assigned 169.254 address. Peers
+				// can route to neither; advertising one quietly kills the
+				// lantern for the whole swarm.
+				if ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 					continue
 				}
 				if picked == nil || (picked.To4() == nil && ip.To4() != nil) {
@@ -127,9 +129,9 @@ func Join(cfg Config) (*Swarm, error) {
 			if picked == nil {
 				picked, err = outboundIP()
 				if err != nil {
-					return nil, fmt.Errorf("advertise host %q resolves only to loopback and no route out was found: %w", ahost, err)
+					return nil, fmt.Errorf("advertise host %q resolves only to unroutable addresses and no route out was found: %w", ahost, err)
 				}
-				logger.Printf("advertise host %q resolves to loopback, using this box's outbound address instead", ahost)
+				logger.Printf("advertise host %q resolves only to unroutable addresses, using this box's outbound address instead", ahost)
 			}
 			ahost = picked.String()
 		}

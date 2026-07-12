@@ -1,6 +1,7 @@
 # Contributing
 
-The project is pre-alpha. There is no working code yet, which changes what is useful.
+The project is pre-alpha. The mesh runs, but nothing about it is settled, which changes
+what is useful.
 
 ## The most useful thing you can do right now
 
@@ -11,17 +12,18 @@ patch at this stage.
 
 If you have opinions about SWIM, gossip fan-out, or quorum under partition, read
 [`docs/design.md`](docs/design.md) and tell me where it is wrong. The partition handling
-and the notification-storm election are the two parts most likely to be wrong, and they
-are both written down precisely so someone can argue with them.
+is the part most likely to be wrong: the last-known-size rule is implemented, but the
+swarm cannot yet shrink gracefully and does not alert on the partition itself. Both are
+written down precisely so someone can argue with them.
 
 ## If you want to send code
 
 - Read [`CLAUDE.md`](CLAUDE.md) first. It holds the vocabulary, the invariants, and the
   non-goals. A patch that quietly introduces a coordinator or a central collector will be
   rejected no matter how good it is, because that is the one thing this tool is not.
-- `gofmt -l .` must print nothing. `go vet ./...` must be clean.
-- Tests for anything touching quorum or state merging. That is where the bugs will live.
-  Partition scenarios especially.
+- `gofmt -l .` must print nothing. `go vet ./...` and `go test ./...` must be clean.
+- Tests for anything touching quorum or state merging, table-driven like the ones that
+  are there. That is where the bugs will live. Partition scenarios especially.
 - Commit messages in the imperative mood, saying why rather than what.
 
 ## Vocabulary

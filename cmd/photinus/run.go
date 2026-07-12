@@ -42,6 +42,7 @@ func runCmd(args []string) error {
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
+	panel := fs.String("panel", "", "serve the read-only web status panel on this address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
 	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime) without naming them")
 	var seeds, watches stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
@@ -123,6 +124,17 @@ func runCmd(args []string) error {
 		return err
 	}
 
+	var panelSrv *http.Server
+	if *panel != "" {
+		panelSrv, err = servePanel(*panel, lan)
+		if err != nil {
+			statusSrv.Close()
+			sw.Leave()
+			return err
+		}
+		logger.Printf("web panel lit at http://%s", *panel)
+	}
+
 	logger.Printf("lantern %s is lit, gossiping on %s, status socket %s", *id, *bind, sockPath)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -130,6 +142,9 @@ func runCmd(args []string) error {
 	lan.Run(ctx)
 
 	logger.Printf("lantern %s going dark", *id)
+	if panelSrv != nil {
+		panelSrv.Close()
+	}
 	statusSrv.Close()
 	os.Remove(sockPath)
 	if err := sw.Leave(); err != nil {

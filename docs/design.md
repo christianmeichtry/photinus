@@ -295,6 +295,19 @@ per-check overridable) warns days before the outage would happen. The
 expiry judgment is a pure function over the leaf certificate so the
 clock-dependent logic is table-tested without a network.
 
+### The web panel: a dashboard with no dashboard host
+
+`-panel addr` makes a lantern serve a read-only HTML panel plus
+`/status.json`, both answered from local memory like everything else.
+The point is what it is not: there is no dashboard host, because every
+lantern serves the same panel about the same swarm, so pointing a browser
+(or DNS round-robin) at any box works and any box can die. The page is a
+single embedded file with no external dependencies, state words carry the
+information and color only decorates, and it is unauthenticated by design:
+loopback-bound by default in the fleet script, and anything public
+belongs behind a reverse proxy with auth. This is also the read API the
+future mobile app rides.
+
 ### Notification: hash election, no protocol
 
 Every lantern detects the same outages, so the problem is not sending a page

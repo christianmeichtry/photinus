@@ -39,7 +39,7 @@ type Config struct {
 	// memberlist guess, which is right on simple LAN boxes.
 	Advertise string
 	// Key is the shared swarm secret. When set, gossip is encrypted and
-	// lanterns without the same key cannot join or inject anything. The
+	// lanterns without the same key cannot join or contribute observations. The
 	// actual cipher key is derived from it, so any passphrase works.
 	Key string
 	// Expect names lanterns that must exist whether or not they are alive.
@@ -48,10 +48,10 @@ type Config struct {
 	// being invisible because membership is only ever discovered. Same list
 	// on every box, like the seeds.
 	Expect []string
-	// HTTP, when set, is served on the gossip port itself: the mux sniffs
-	// each TCP connection and routes memberlist traffic to memberlist and
-	// HTTP to this handler. One open port serves both. Nil leaves the
-	// gossip port speaking gossip only.
+	// HTTP, when set, is served on the gossip port itself: the mux
+	// classifies each TCP connection by its first byte and routes
+	// memberlist traffic to memberlist and HTTP to this handler. One open
+	// port serves both. Nil leaves the gossip port speaking gossip only.
 	HTTP http.Handler
 	// OnFlash is called for every flash payload received from a peer. It must
 	// not block; copy is already taken care of.

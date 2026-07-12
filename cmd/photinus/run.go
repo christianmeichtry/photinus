@@ -37,7 +37,7 @@ func runCmd(args []string) error {
 	id := fs.String("id", hostname, "this lantern's name, unique in the swarm")
 	bind := fs.String("bind", "0.0.0.0:7946", "host:port the gossip layer listens on")
 	advertise := fs.String("advertise", "", "host[:port] peers should reach this lantern on, when that differs from -bind (NAT, several interfaces)")
-	key := fs.String("key", os.Getenv("PHOTINUS_KEY"), "shared swarm secret: encrypts gossip and keeps strangers out (defaults to $PHOTINUS_KEY, empty runs open)")
+	key := fs.String("key", os.Getenv("PHOTINUS_KEY"), "shared swarm secret: encrypts gossip so only lanterns with the same key can join (defaults to $PHOTINUS_KEY, empty runs open)")
 	interval := fs.Duration("interval", 2*time.Second, "time between flashes")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments")

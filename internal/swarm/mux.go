@@ -11,16 +11,20 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
-// The mux lets HTTP share the gossip port. The whole point of the swarm is
-// that one port is already open everywhere, so a status client should need
-// exactly that port and nothing else. memberlist's TCP messages begin with
-// a binary message type in the low teens (see memberlist's messageType
-// constants), while HTTP requests begin with an ASCII method. One peeked
-// byte tells them apart, and each side receives a byte-identical stream.
+// The mux lets HTTP and gossip share the one port the swarm already opens,
+// so a status client needs exactly that port and nothing else. The two
+// protocols are self-identifying from their first byte: memberlist's stream
+// messages begin with a binary message type in the low teens (see
+// memberlist's messageType constants), while an HTTP request begins with an
+// ASCII method letter. The transport reads that first byte, classifies the
+// connection, and hands each side a byte-identical stream. This is a
+// standard connection-multiplexing pattern, the same idea as cmux or
+// serving gRPC and HTTP on one port.
 
 // muxTransport wraps memberlist's NetTransport. UDP passes through
-// untouched; TCP stream connections are sniffed and routed either to
-// memberlist (gossip) or to an embedded HTTP server (status clients).
+// untouched; each TCP stream connection is classified by its first byte and
+// delivered to memberlist (gossip) or to an embedded HTTP server (status
+// clients).
 type muxTransport struct {
 	*memberlist.NetTransport
 	gossip chan net.Conn
@@ -68,8 +72,8 @@ func (t *muxTransport) Shutdown() error {
 	return t.NetTransport.Shutdown()
 }
 
-// route drains the inner transport's stream channel, sniffs each
-// connection, and delivers it to the right consumer.
+// route drains the inner transport's stream channel, classifies each
+// connection by its first byte, and delivers it to the right consumer.
 func (t *muxTransport) route() {
 	inner := t.NetTransport.StreamCh()
 	for {
@@ -81,15 +85,15 @@ func (t *muxTransport) route() {
 				close(t.gossip)
 				return
 			}
-			go t.sniff(conn)
+			go t.classify(conn)
 		}
 	}
 }
 
-// sniff peeks one byte and routes. The deadline keeps a silent connection
-// from holding a goroutine forever; the peeked byte is replayed so both
-// consumers see the stream from its first byte.
-func (t *muxTransport) sniff(conn net.Conn) {
+// classify reads the first byte and routes accordingly. The deadline keeps
+// a silent connection from holding a goroutine forever; the first byte is
+// put back so both consumers see the stream from the start.
+func (t *muxTransport) classify(conn net.Conn) {
 	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	br := bufio.NewReader(conn)
 	first, err := br.Peek(1)
@@ -98,7 +102,7 @@ func (t *muxTransport) sniff(conn net.Conn) {
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
-	wrapped := &peekedConn{Conn: conn, r: br}
+	wrapped := &prefixConn{Conn: conn, r: br}
 
 	if isHTTPStart(first[0]) && t.httpLn != nil {
 		if !t.httpLn.deliver(wrapped) {
@@ -124,14 +128,14 @@ func isHTTPStart(b byte) bool {
 	return false
 }
 
-// peekedConn replays bytes the sniffer buffered before handing the
-// connection on.
-type peekedConn struct {
+// prefixConn replays the bytes buffered during classification before
+// handing the connection on, so the reader sees the full stream.
+type prefixConn struct {
 	net.Conn
 	r *bufio.Reader
 }
 
-func (c *peekedConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+func (c *prefixConn) Read(p []byte) (int, error) { return c.r.Read(p) }
 
 // chanListener adapts a channel of connections to net.Listener so an
 // http.Server can serve connections the mux routes to it.

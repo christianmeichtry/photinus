@@ -91,7 +91,7 @@ func TestMuxRoutes(t *testing.T) {
 			t.Fatalf("dial: %v", err)
 		}
 		defer conn.Close()
-		// Send nothing; the sniff deadline should close it. A following
+		// Send nothing; the classify deadline should close it. A following
 		// HTTP request must still be served, proving the loop lives.
 		time.Sleep(100 * time.Millisecond)
 		conn2, err := net.Dial("tcp", addr)

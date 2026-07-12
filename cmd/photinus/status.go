@@ -151,10 +151,14 @@ func printTable(st lantern.Status, verbose bool) {
 	fmt.Printf("%s%-6s %-*s %-*s %-*s %s%s\n", c.dim, "STATE", checkW, "CHECK", targetW, "TARGET", agreeW, "AGREEMENT", "DETAIL", c.reset)
 	for _, s := range st.Subjects {
 		state, color := "up", c.up
-		switch s.State {
-		case quorum.StateDown:
+		switch {
+		case s.Voters == 0:
+			// Nobody has a fresh observation. Stale is unknown, and
+			// unknown must not dress up as healthy.
+			state, color = "?", c.dim
+		case s.State == quorum.StateDown:
 			state, color = "DOWN", c.down
-		case quorum.StateWarn:
+		case s.State == quorum.StateWarn:
 			state, color = "WARN", c.warn
 		}
 		fmt.Printf("%s%-6s%s %-*s %-*s %-*s %s\n",
@@ -169,6 +173,9 @@ func printTable(st lantern.Status, verbose bool) {
 }
 
 func agreement(d quorum.Decision) string {
+	if d.Voters == 0 {
+		return "no fresh word"
+	}
 	if d.Authority {
 		return "own report"
 	}

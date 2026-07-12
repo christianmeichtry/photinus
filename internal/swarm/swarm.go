@@ -181,6 +181,19 @@ func (s *Swarm) LastKnownSize() int {
 	return len(s.everSeen)
 }
 
+// Roster lists every lantern ever seen alive, including this one and any
+// that have since died. It is the swarm as remembered, the same denominator
+// the quorum counts against.
+func (s *Swarm) Roster() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	names := make([]string, 0, len(s.everSeen))
+	for name := range s.everSeen {
+		names = append(names, name)
+	}
+	return names
+}
+
 // Flash queues a payload for gossip. memberlist fans it out to a constant
 // sample of peers per round, never to everyone at once.
 func (s *Swarm) Flash(payload []byte) {

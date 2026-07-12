@@ -141,16 +141,19 @@ func (l *Lantern) flash(ctx context.Context) {
 
 	l.mu.Lock()
 	own = append(own, l.skewObservations(now)...)
+	sw := l.sw
+	if sw != nil {
+		own = append(own, l.livenessObservations(sw.Members(), sw.Roster(), now)...)
+	}
 	for _, o := range own {
 		l.store[storeKey(o)] = o
 	}
-	sw := l.sw
 	l.mu.Unlock()
 
-	if sw != nil && len(own) > 0 {
-		if payload, err := json.Marshal(own); err != nil {
-			l.log.Printf("could not encode a flash, skipping this one: %v", err)
-		} else {
+	if sw != nil {
+		// A flash must ride inside one UDP gossip packet, so a view that
+		// has outgrown the packet goes out as several small flashes.
+		for _, payload := range chunkFlash(own, 1000) {
 			sw.Flash(payload)
 		}
 	}

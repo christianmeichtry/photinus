@@ -103,6 +103,14 @@ after a warning).
 | **memory** | RAM utilization percent against a threshold | local |
 | **swap** | swap/pagefile utilization percent, an early warning before OOM | local |
 | **skew** | clock drift between this lantern and the swarm's flashes | relational |
+| **lantern** | every known peer's liveness, from membership, automatic | relational |
+
+**The standard local checks run by default** (`disk:/`, `cpu`, `memory`, `swap`,
+`uptime`): one binary and a seed gives a fully monitored host. `-watch` adds more
+(extra disks, tcp targets) or overrides a default's threshold by naming it;
+`-defaults=false` opts a box out. `skew` and `lantern` need no flags at all: skew is
+measured from flashes, and the lantern check is the mesh watching itself, membership
+turned into quorum-decided subjects so a dead host pages with zero configuration.
 
 Resource checks (`uptime`, `disk`, `cpu`, `memory`, `swap`) are *local* facts: rule 4
 applies, a lantern is the sole authority on its own resource checks and gossips them as

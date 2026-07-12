@@ -42,9 +42,10 @@ func runCmd(args []string) error {
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
+	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime) without naming them")
 	var seeds, watches stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
-	fs.Var(&watches, "watch", "a check to run (repeatable): tcp:host:port, disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration]")
+	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration]; naming a default check overrides it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -65,6 +66,23 @@ func runCmd(args []string) error {
 	checks, err := parseWatches(*id, watches)
 	if err != nil {
 		return err
+	}
+	if *defaults {
+		// The named checks came first, so a -watch that names a default
+		// subject (say disk:/ with its own threshold) wins over it.
+		std, err := parseWatches(*id, []string{"disk:/", "cpu", "memory", "swap", "uptime"})
+		if err != nil {
+			return err
+		}
+		have := make(map[string]bool, len(checks))
+		for _, c := range checks {
+			have[c.Name()+"|"+c.Target()] = true
+		}
+		for _, c := range std {
+			if !have[c.Name()+"|"+c.Target()] {
+				checks = append(checks, c)
+			}
+		}
 	}
 
 	logger := log.New(os.Stderr, "", log.Ltime)

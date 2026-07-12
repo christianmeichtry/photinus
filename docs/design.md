@@ -251,6 +251,32 @@ ladder notifies as what it now is. Colors in the status output are
 decoration, never information: everything they say is also in the words, so
 pipes and NO_COLOR lose nothing.
 
+### The lantern check: membership becomes a subject
+
+Membership always knew who stopped answering; it just never told quorum.
+The lantern check closes that loop: every flash, each lantern reports every
+known peer (the ever-seen roster minus itself) as up or down according to
+its own membership view, as ordinary aggregated observations under the
+check name "lantern". A dead host is then convicted by quorum and paged
+like anything else, with no configuration. Nobody reports on themselves, so
+the subject can never be authoritative: a partition's minority can see the
+majority as dead all it wants, it will never reach quorum about it.
+
+This is also why the standard local checks now run by default: one binary
+plus a seed equals a monitored host, which is the installation story the
+brief promised. `-watch` adds or overrides, `-defaults=false` opts out.
+
+### Flashes split before the packet does
+
+With defaults, skew, and liveness, a five-host swarm puts around fourteen
+observations in a flash, and the JSON outgrows the roughly 1400 byte UDP
+gossip packet. A broadcast that does not fit never leaves memberlist's
+queue, and the failure mode is silence. So a flash is chunked: observations
+are packed greedily into payloads capped at 1000 bytes and each chunk
+gossips independently. Merging is per observation and does not care how
+they arrive. The binary encoding stays on the roadmap; chunking makes the
+current encoding safe rather than efficient.
+
 ### Notification: hash election, no protocol
 
 Every lantern detects the same outages, so the problem is not sending a page

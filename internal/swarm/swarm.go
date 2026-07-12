@@ -101,6 +101,23 @@ func Join(cfg Config) (*Swarm, error) {
 			}
 			ahost, aport = h, n
 		}
+		// memberlist wants an IP here, but operators have names. A DNS
+		// name resolves once at startup; boxes whose address changes at
+		// runtime need the IP given explicitly anyway.
+		if net.ParseIP(ahost) == nil {
+			ips, err := net.LookupIP(ahost)
+			if err != nil || len(ips) == 0 {
+				return nil, fmt.Errorf("resolving advertise host %q: %w", ahost, err)
+			}
+			picked := ips[0]
+			for _, ip := range ips {
+				if ip.To4() != nil {
+					picked = ip
+					break
+				}
+			}
+			ahost = picked.String()
+		}
 		mc.AdvertiseAddr = ahost
 		mc.AdvertisePort = aport
 	}

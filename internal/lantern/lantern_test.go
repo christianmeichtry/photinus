@@ -100,3 +100,36 @@ func TestReceiveFlashGarbage(t *testing.T) {
 		t.Errorf("garbage flash grew the store to %d entries, want 0", len(l.store))
 	}
 }
+
+func TestReceiveFlashVersions(t *testing.T) {
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	o := quorum.Observation{Observer: "l2", Target: "db:5432", Check: "tcp", State: quorum.StateDown, Seen: now}
+
+	t.Run("current envelope is accepted", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		payload, _ := json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{o}})
+		l.ReceiveFlash(payload)
+		if len(l.store) != 1 {
+			t.Errorf("store has %d entries, want 1", len(l.store))
+		}
+	})
+
+	t.Run("legacy bare array still accepted, one release of grace", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		payload, _ := json.Marshal([]quorum.Observation{o})
+		l.ReceiveFlash(payload)
+		if len(l.store) != 1 {
+			t.Errorf("store has %d entries, want 1", len(l.store))
+		}
+	})
+
+	t.Run("an unknown wire version is dropped, never guessed at", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		payload, _ := json.Marshal(envelope{V: flashV + 1, Obs: []quorum.Observation{o}})
+		l.ReceiveFlash(payload)
+		l.ReceiveFlash(payload)
+		if len(l.store) != 0 {
+			t.Errorf("a future version's flash was merged: %d entries", len(l.store))
+		}
+	})
+}

@@ -5,6 +5,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/christianmeichtry/photinus/internal/version"
 )
 
 func main() {
@@ -18,6 +20,8 @@ func main() {
 		err = runCmd(os.Args[2:])
 	case "status":
 		err = statusCmd(os.Args[2:])
+	case "version", "-v", "--version":
+		fmt.Println("photinus " + version.Release)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -35,8 +39,9 @@ func usage() {
 	fmt.Fprint(os.Stderr, `photinus, mesh monitoring with no center
 
 Usage:
-  photinus run     start a lantern on this host
-  photinus status  ask the local lantern what the swarm sees
+  photinus run      start a lantern on this host
+  photinus status   ask the local lantern what the swarm sees
+  photinus version  print the release
 
 Run 'photinus <command> -h' for the flags of each command.
 `)

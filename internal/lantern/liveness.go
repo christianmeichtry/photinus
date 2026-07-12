@@ -44,6 +44,18 @@ func (l *Lantern) livenessObservations(alive, roster []string, now time.Time) []
 	return obs
 }
 
+// flashV is the wire version of the flash payload. The envelope is the
+// contract that makes rolling upgrades safe: within a version, changes are
+// additive only; anything else bumps the number, and a lantern drops
+// versions it does not understand instead of misreading them.
+const flashV = 1
+
+// envelope is what actually rides the gossip packet.
+type envelope struct {
+	V   int                  `json:"v"`
+	Obs []quorum.Observation `json:"obs"`
+}
+
 // chunkFlash splits observations into payloads that each fit inside one UDP
 // gossip packet. A flash that outgrows the packet would never leave the
 // queue, and the failure would be silence, so the size limit is enforced
@@ -51,15 +63,15 @@ func (l *Lantern) livenessObservations(alive, roster []string, now time.Time) []
 func chunkFlash(obs []quorum.Observation, limit int) [][]byte {
 	var payloads [][]byte
 	var batch []quorum.Observation
-	size := 2 // the enclosing brackets
+	size := 16 // the envelope around the batch
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
-		if payload, err := json.Marshal(batch); err == nil {
+		if payload, err := json.Marshal(envelope{V: flashV, Obs: batch}); err == nil {
 			payloads = append(payloads, payload)
 		}
-		batch, size = nil, 2
+		batch, size = nil, 16
 	}
 	for _, o := range obs {
 		b, err := json.Marshal(o)

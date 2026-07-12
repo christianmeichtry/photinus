@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
+
+	"github.com/christianmeichtry/photinus/internal/version"
 )
 
 // Config describes one lantern's place in the swarm.
@@ -216,6 +218,16 @@ func (s *Swarm) LastKnownSize() int {
 	return len(s.everSeen)
 }
 
+// MemberVersions maps each currently alive lantern to the release it
+// announced when it joined.
+func (s *Swarm) MemberVersions() map[string]string {
+	out := make(map[string]string)
+	for _, n := range s.ml.Members() {
+		out[n.Name] = string(n.Meta)
+	}
+	return out
+}
+
 // Roster lists every lantern ever seen alive, including this one and any
 // that have since died. It is the swarm as remembered, the same denominator
 // the quorum counts against.
@@ -277,7 +289,15 @@ func (b broadcast) Finished()                             {}
 // delegate carries flashes over memberlist's gossip messages.
 type delegate struct{ s *Swarm }
 
-func (d *delegate) NodeMeta(limit int) []byte { return nil }
+// NodeMeta announces this lantern's release, so the swarm can see version
+// skew during rolling upgrades.
+func (d *delegate) NodeMeta(limit int) []byte {
+	v := version.Release
+	if len(v) > limit {
+		v = v[:limit]
+	}
+	return []byte(v)
+}
 
 func (d *delegate) NotifyMsg(msg []byte) {
 	if len(msg) == 0 {

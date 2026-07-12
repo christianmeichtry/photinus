@@ -180,10 +180,28 @@ func printStatus(st lantern.Status, verbose bool) {
 	}
 	sort.Strings(names)
 
+	// Version skew is operator information during rolling upgrades; a
+	// uniform swarm keeps quiet about it.
+	mixed := false
+	var first string
+	for _, v := range st.Versions {
+		if first == "" {
+			first = v
+		} else if v != first {
+			mixed = true
+		}
+	}
+
 	for _, name := range names {
 		sec := sections[name]
 		fmt.Println()
-		fmt.Println(hostHeader(sec, c))
+		head := hostHeader(sec, c)
+		if mixed {
+			if v := st.Versions[name]; v != "" {
+				head += fmt.Sprintf(" %s· runs %s%s", c.dim, v, c.reset)
+			}
+		}
+		fmt.Println(head)
 		if verbose {
 			for _, s := range []*lantern.SubjectStatus{sec.live, sec.skew} {
 				if s == nil {

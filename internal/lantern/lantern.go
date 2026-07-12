@@ -51,11 +51,12 @@ type Lantern struct {
 	notify   *notify.Tracker
 	log      *log.Logger
 
-	mu       sync.Mutex
-	store    map[string]quorum.Observation
-	clocks   map[string]*peerClock
-	lastSeen map[string]time.Time
-	sw       *swarm.Swarm
+	mu          sync.Mutex
+	store       map[string]quorum.Observation
+	clocks      map[string]*peerClock
+	lastSeen    map[string]time.Time
+	badVersions map[int]bool
+	sw          *swarm.Swarm
 }
 
 // New builds a lantern. Attach a swarm and call Run to light it.
@@ -73,16 +74,17 @@ func New(cfg Config) *Lantern {
 		logger = log.New(io.Discard, "", 0)
 	}
 	return &Lantern{
-		id:       cfg.ID,
-		interval: interval,
-		maxAge:   maxAge,
-		skewMax:  cfg.SkewMax,
-		checks:   cfg.Checks,
-		notify:   cfg.Notify,
-		log:      logger,
-		store:    make(map[string]quorum.Observation),
-		clocks:   make(map[string]*peerClock),
-		lastSeen: make(map[string]time.Time),
+		id:          cfg.ID,
+		interval:    interval,
+		maxAge:      maxAge,
+		skewMax:     cfg.SkewMax,
+		checks:      cfg.Checks,
+		notify:      cfg.Notify,
+		log:         logger,
+		store:       make(map[string]quorum.Observation),
+		clocks:      make(map[string]*peerClock),
+		lastSeen:    make(map[string]time.Time),
+		badVersions: make(map[int]bool),
 	}
 }
 
@@ -174,11 +176,36 @@ func (l *Lantern) flash(ctx context.Context) {
 // observation per observer and subject wins. Observations claiming to come
 // from this lantern are dropped: a lantern is the sole authority on its own
 // checks and no peer may overwrite that.
+//
+// Flashes arrive as a versioned envelope. An unknown version is dropped
+// with a log line, never guessed at: wrong monitoring conclusions are
+// worse than missing ones. Bare arrays, the format before the envelope
+// existed, are still accepted for one release.
 func (l *Lantern) ReceiveFlash(payload []byte) {
 	var obs []quorum.Observation
-	if err := json.Unmarshal(payload, &obs); err != nil {
-		l.log.Printf("dropped a flash that did not parse: %v", err)
-		return
+	if len(payload) > 0 && payload[0] == '[' {
+		// Legacy pre-envelope flash from a 0.0.1 lantern.
+		if err := json.Unmarshal(payload, &obs); err != nil {
+			l.log.Printf("dropped a flash that did not parse: %v", err)
+			return
+		}
+	} else {
+		var env envelope
+		if err := json.Unmarshal(payload, &env); err != nil {
+			l.log.Printf("dropped a flash that did not parse: %v", err)
+			return
+		}
+		if env.V != flashV {
+			l.mu.Lock()
+			seen := l.badVersions[env.V]
+			l.badVersions[env.V] = true
+			l.mu.Unlock()
+			if !seen {
+				l.log.Printf("dropping flashes with wire version %d, this lantern speaks %d: upgrade the older side", env.V, flashV)
+			}
+			return
+		}
+		obs = env.Obs
 	}
 	now := time.Now().UTC()
 	l.mu.Lock()
@@ -212,10 +239,11 @@ type SubjectStatus struct {
 
 // Status is everything one lantern knows, from local memory only.
 type Status struct {
-	ID            string          `json:"id"`
-	Swarm         []string        `json:"swarm"`
-	LastKnownSize int             `json:"last_known_size"`
-	Subjects      []SubjectStatus `json:"subjects"`
+	ID            string            `json:"id"`
+	Swarm         []string          `json:"swarm"`
+	LastKnownSize int               `json:"last_known_size"`
+	Versions      map[string]string `json:"versions,omitempty"`
+	Subjects      []SubjectStatus   `json:"subjects"`
 }
 
 // Status answers from local memory. It makes no network calls and must never
@@ -237,6 +265,7 @@ func (l *Lantern) Status() Status {
 		st.Swarm = sw.Members()
 		sort.Strings(st.Swarm)
 		lastKnown = sw.LastKnownSize()
+		st.Versions = sw.MemberVersions()
 	}
 	st.LastKnownSize = lastKnown
 

@@ -67,11 +67,14 @@ func TestChunkFlash(t *testing.T) {
 		if len(p) > limit {
 			t.Errorf("payload %d is %d bytes, over the %d limit", i, len(p), limit)
 		}
-		var back []quorum.Observation
+		var back envelope
 		if err := json.Unmarshal(p, &back); err != nil {
 			t.Fatalf("payload %d does not parse: %v", i, err)
 		}
-		total += len(back)
+		if back.V != flashV {
+			t.Errorf("payload %d carries wire version %d, want %d", i, back.V, flashV)
+		}
+		total += len(back.Obs)
 	}
 	if total != len(obs) {
 		t.Errorf("%d observations across all payloads, want %d: the split loses data", total, len(obs))

@@ -124,6 +124,22 @@ host (which is also why it lives in `internal/lantern`, not `internal/check`). I
 most on-brand thing photinus can measure, since the whole project is named after
 synchronized flashing.
 
+## Wire compatibility (binding from 0.0.2 on)
+
+Fleets upgrade box by box, so a lantern must always coexist with the
+previous release. The rules:
+
+- Flashes ride in a versioned envelope (`{"v":1,"obs":[...]}`). Within a
+  wire version, changes are **additive only**: new optional fields, never
+  renamed or re-meant ones. Anything else bumps `v`.
+- A lantern accepts its own wire version and one back, and **drops** what
+  it does not understand with a log line. It never guesses: wrong
+  monitoring conclusions are worse than missing ones.
+- Every lantern announces its release in memberlist node metadata;
+  `status` shows versions whenever the swarm is mixed.
+- The notify command's arguments (`kind check target sentence`) are a
+  public contract: append new arguments at the end, never reorder.
+
 ## Rules that are not negotiable
 
 1. **No single point of failure, including in the code.** No "primary" lantern, no elected

@@ -229,6 +229,15 @@ func (s *Swarm) MemberVersions() map[string]string {
 	return out
 }
 
+// Forget removes a lantern from the swarm's memory, shrinking the quorum
+// denominator. Only a graceful farewell earns this; the merely dead stay
+// counted, which keeps a minority partition quiet.
+func (s *Swarm) Forget(name string) {
+	s.mu.Lock()
+	delete(s.everSeen, name)
+	s.mu.Unlock()
+}
+
 // Roster lists every lantern ever seen alive, including this one and any
 // that have since died. It is the swarm as remembered, the same denominator
 // the quorum counts against.
@@ -334,7 +343,18 @@ func (e *events) NotifyJoin(n *memberlist.Node) {
 }
 
 func (e *events) NotifyLeave(n *memberlist.Node) {
-	e.s.log.Printf("lantern %s left the swarm or stopped answering", n.Name)
+	// A graceful goodbye shrinks the swarm's memory: a decommissioned
+	// lantern must stop counting toward quorum. A lantern that merely
+	// stopped answering stays counted, which is what keeps a minority
+	// partition quiet instead of screaming.
+	if n.State == memberlist.StateLeft {
+		e.s.mu.Lock()
+		delete(e.s.everSeen, n.Name)
+		e.s.mu.Unlock()
+		e.s.log.Printf("lantern %s left the swarm gracefully and is forgotten", n.Name)
+		return
+	}
+	e.s.log.Printf("lantern %s stopped answering", n.Name)
 }
 
 func (e *events) NotifyUpdate(n *memberlist.Node) {}

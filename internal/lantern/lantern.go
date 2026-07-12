@@ -226,6 +226,10 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 			l.log.Printf("dropped a flash that did not parse: %v", err)
 			return
 		}
+		if env.Leave != "" && env.Leave != l.id {
+			l.forget(env.Leave)
+			return
+		}
 		if env.V != flashV {
 			l.mu.Lock()
 			seen := l.badVersions[env.V]
@@ -260,6 +264,40 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 
 func storeKey(o quorum.Observation) string {
 	return o.Observer + "|" + o.Check + "|" + o.Target
+}
+
+// Farewell tells the swarm this lantern is leaving on purpose, then gives
+// the gossip a moment to carry the message before the transport goes away.
+func (l *Lantern) Farewell() {
+	l.mu.Lock()
+	sw := l.sw
+	l.mu.Unlock()
+	if sw == nil {
+		return
+	}
+	if payload, err := json.Marshal(envelope{V: flashV, Leave: l.id}); err == nil {
+		sw.Flash(payload)
+		time.Sleep(1200 * time.Millisecond)
+	}
+}
+
+// forget erases a gracefully departed lantern: its word, everything said
+// about it, and its seat in the quorum denominator.
+func (l *Lantern) forget(name string) {
+	l.mu.Lock()
+	for k, o := range l.store {
+		if o.Observer == name || o.Target == name {
+			delete(l.store, k)
+		}
+	}
+	delete(l.clocks, name)
+	delete(l.lastSeen, name)
+	sw := l.sw
+	l.mu.Unlock()
+	if sw != nil {
+		sw.Forget(name)
+	}
+	l.log.Printf("lantern %s said farewell and is forgotten", name)
 }
 
 // prune drops observations long past any chance of counting again, so

@@ -50,10 +50,13 @@ func (l *Lantern) livenessObservations(alive, roster []string, now time.Time) []
 // versions it does not understand instead of misreading them.
 const flashV = 1
 
-// envelope is what actually rides the gossip packet.
+// envelope is what actually rides the gossip packet. Leave, when set, is a
+// farewell: the named lantern is decommissioning itself and asks the swarm
+// to forget it. Additive since wire v1.
 type envelope struct {
-	V   int                  `json:"v"`
-	Obs []quorum.Observation `json:"obs"`
+	V     int                  `json:"v"`
+	Obs   []quorum.Observation `json:"obs,omitempty"`
+	Leave string               `json:"leave,omitempty"`
 }
 
 // chunkFlash splits observations into payloads that each fit inside one UDP

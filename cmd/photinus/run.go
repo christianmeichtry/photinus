@@ -142,6 +142,7 @@ func runCmd(args []string) error {
 	lan.Run(ctx)
 
 	logger.Printf("lantern %s going dark", *id)
+	lan.Farewell()
 	if panelSrv != nil {
 		panelSrv.Close()
 	}

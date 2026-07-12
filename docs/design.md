@@ -308,6 +308,35 @@ loopback-bound by default in the fleet script, and anything public
 belongs behind a reverse proxy with auth. This is also the read API the
 future mobile app rides.
 
+### Checks pace themselves
+
+Every check ran every flash until the first fleet measured what that
+means: a TLS handshake against every watched website from every box
+every two seconds. Checks now declare a cadence (http and tcp five
+minutes, cert hourly, local resource checks every flash), and a paced
+verdict keeps riding each flash with a TTL that outlives the gap, so
+quorum never mistakes slow for stale and late joiners hear everything
+at once. Stores prune what is long past voting.
+
+### Farewell: leaving on purpose shrinks the swarm
+
+The ever-seen ledger never forgot, so a decommissioned lantern inflated
+the quorum denominator forever. Now a shutting-down lantern says
+farewell in the flash envelope (additive since wire v1), and receivers
+forget it entirely: roster seat, its word, everything said about it.
+Only the graceful earn this; the merely dead stay counted, which is
+what keeps a minority partition quiet. memberlist's own left-state was
+not distinguishable at the receiving callback, so photinus says it in
+its own wire instead.
+
+### Flap damping: one page says bouncing
+
+A subject that changes state four times inside ten minutes is flapping.
+The tracker sends one flapping notification, suppresses the bounce
+pages while it continues, and closes with one settled page after five
+minutes of held state. Status always shows the live truth; only the
+pager is spared. A real outage after settling pages normally.
+
 ### Notification: hash election, no protocol
 
 Every lantern detects the same outages, so the problem is not sending a page

@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,8 +90,10 @@ func Join(cfg Config) (*Swarm, error) {
 	mc.AdvertisePort = port
 	mc.Delegate = &delegate{s: s}
 	mc.Events = &events{s: s}
-	// memberlist's own logging is developer noise, not operator information.
-	mc.LogOutput = io.Discard
+	// memberlist's chatter is developer noise, but its warnings are exactly
+	// the operator information that explains a sick swarm: refused joins,
+	// UDP that fails where TCP works. Pass those through, drop the rest.
+	mc.LogOutput = warnFilter{logger}
 
 	if cfg.Advertise != "" {
 		ahost, aport := cfg.Advertise, port
@@ -109,17 +112,30 @@ func Join(cfg Config) (*Swarm, error) {
 			if err != nil || len(ips) == 0 {
 				return nil, fmt.Errorf("resolving advertise host %q: %w", ahost, err)
 			}
-			picked := ips[0]
+			var picked net.IP
 			for _, ip := range ips {
-				if ip.To4() != nil {
-					picked = ip
-					break
+				// Debian-family boxes map their own hostname to 127.0.1.1
+				// in /etc/hosts. Advertising loopback tells every peer to
+				// probe itself, and the whole swarm quietly dies of it.
+				if ip.IsLoopback() {
+					continue
 				}
+				if picked == nil || (picked.To4() == nil && ip.To4() != nil) {
+					picked = ip
+				}
+			}
+			if picked == nil {
+				picked, err = outboundIP()
+				if err != nil {
+					return nil, fmt.Errorf("advertise host %q resolves only to loopback and no route out was found: %w", ahost, err)
+				}
+				logger.Printf("advertise host %q resolves to loopback, using this box's outbound address instead", ahost)
 			}
 			ahost = picked.String()
 		}
 		mc.AdvertiseAddr = ahost
 		mc.AdvertisePort = aport
+		logger.Printf("peers will reach this lantern at %s:%d", ahost, aport)
 	}
 
 	if cfg.Key != "" {
@@ -224,6 +240,29 @@ func (s *Swarm) Leave() error {
 		return fmt.Errorf("leaving the swarm: %w", err)
 	}
 	return s.ml.Shutdown()
+}
+
+// outboundIP asks the routing table which local address reaches the world.
+// Dialing UDP sends no packet; it only makes the kernel pick the route.
+func outboundIP() (net.IP, error) {
+	conn, err := net.Dial("udp4", "1.1.1.1:53")
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	return conn.LocalAddr().(*net.UDPAddr).IP, nil
+}
+
+// warnFilter lets memberlist's warnings and errors through to the operator
+// log and swallows its debug chatter.
+type warnFilter struct{ log *log.Logger }
+
+func (w warnFilter) Write(p []byte) (int, error) {
+	line := string(p)
+	if strings.Contains(line, "[WARN]") || strings.Contains(line, "[ERR]") {
+		w.log.Print("gossip: " + strings.TrimSpace(line))
+	}
+	return len(p), nil
 }
 
 // broadcast adapts a flash payload to memberlist's broadcast queue.

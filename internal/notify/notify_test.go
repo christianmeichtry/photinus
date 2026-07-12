@@ -120,18 +120,20 @@ func TestTracker(t *testing.T) {
 		if !strings.Contains(sent[0].Detail, "warns") || !strings.Contains(sent[0].Detail, "connection refused") {
 			t.Errorf("warning sentence = %q, want the complaint in it", sent[0].Detail)
 		}
-		// Escalation to down pages again, as down.
-		esc := tr.Observe([]quorum.Decision{dec(quorum.StateDown, 3)}, alive, afterWarmup.Add(time.Second))
+		// Escalation to down pages again, as down. The transitions sit
+		// outside the flap window on purpose: rapid bouncing is damping's
+		// business and tested there.
+		esc := tr.Observe([]quorum.Decision{dec(quorum.StateDown, 3)}, alive, afterWarmup.Add(11*time.Minute))
 		if len(esc) != 1 || esc[0].Kind != "down" {
 			t.Fatalf("escalation sent %+v, want one down event", esc)
 		}
 		// Back to merely warning.
-		deesc := tr.Observe([]quorum.Decision{dec(quorum.StateWarn, 3)}, alive, afterWarmup.Add(2*time.Second))
+		deesc := tr.Observe([]quorum.Decision{dec(quorum.StateWarn, 3)}, alive, afterWarmup.Add(22*time.Minute))
 		if len(deesc) != 1 || deesc[0].Kind != "warning" {
 			t.Fatalf("de-escalation sent %+v, want one warning event", deesc)
 		}
 		// All the way up: cleared, not recovered, since it was only warning.
-		clr := tr.Observe([]quorum.Decision{dec(quorum.StateUp, 3)}, alive, afterWarmup.Add(3*time.Second))
+		clr := tr.Observe([]quorum.Decision{dec(quorum.StateUp, 3)}, alive, afterWarmup.Add(33*time.Minute))
 		if len(clr) != 1 || clr[0].Kind != "cleared" {
 			t.Fatalf("clear sent %+v, want one cleared event", clr)
 		}

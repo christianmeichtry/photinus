@@ -25,15 +25,18 @@
     @keyframes flash{0%,100%{opacity:.35}50%{opacity:1}}
   }
   h1{font-size:1.2rem;font-weight:600}
+  #field{display:block;width:100%;height:110px;margin:0 0 1rem;border-radius:8px}
   .summary{font-family:var(--mono);font-size:.88rem;color:var(--dim);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
   .summary b{font-weight:600;color:var(--ink)}
   .pill{display:inline-block;padding:.12rem .65rem;border-radius:99px;font-weight:700;font-size:.82rem}
   .pill.quiet{background:rgba(127,168,147,.18);color:var(--up)}
   .pill.down{background:var(--down);color:var(--dusk)}
   .pill.warn{background:var(--warn);color:var(--dusk)}
+  .pill.ghost{background:transparent;border:1px solid var(--rule);color:var(--dim)}
+  .liv{margin-left:auto}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(21rem,1fr));gap:1rem}
-  .card{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:.9rem 1rem}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(21rem,1fr));gap:1rem;grid-auto-rows:1fr}
+  .card{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:.9rem 1rem 1.7rem;position:relative}
   .card.trouble{border-color:var(--down)}
   .card h2{font-size:1.1rem;font-weight:650;display:flex;flex-wrap:wrap;gap:.35rem .7rem;align-items:baseline}
   .hn{font-weight:750;letter-spacing:.06em}
@@ -48,7 +51,7 @@
   td{padding:.38rem .5rem .38rem 0;vertical-align:top;border-top:1px solid var(--rule);font-size:.95rem;overflow-wrap:anywhere}
   tr:first-child td{border-top:0}
   .st{white-space:nowrap;width:4.4rem}
-  .st span{display:inline-block;font-family:var(--mono);font-size:.76rem;font-weight:700;padding:.08rem .5rem;border-radius:99px}
+  .st span{display:inline-block;font-family:var(--mono);font-size:.76rem;font-weight:700;padding:.08rem 0;border-radius:99px;min-width:3.4rem;text-align:center}
   .st.up span{background:rgba(127,168,147,.28);color:var(--up)}
   .st.warn span{background:var(--warn);color:var(--dusk)}
   .st.down span{background:var(--down);color:var(--dusk)}
@@ -59,6 +62,7 @@
 
   .card.warned{border-color:rgba(255,194,75,.55)}
   .typ{display:inline-block;font-family:var(--mono);font-size:.72rem;font-weight:700;color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:0 .4rem;margin-right:.5rem;vertical-align:.08rem}
+  .vfoot{position:absolute;bottom:.45rem;right:.9rem;font-family:var(--mono);font-size:.72rem;color:var(--dim);opacity:.75}
   .services{margin-top:1rem}
   .services .card{grid-column:1 / -1}
   .services .chk{width:auto;white-space:normal}
@@ -74,6 +78,7 @@
     <h1 id="who">…</h1>
     <span class="summary" id="sum"></span>
   </header>
+  <canvas id="field" aria-hidden="true"></canvas>
   <div id="err">The lantern stopped answering. This page is served from its memory, so if you can read this after a reload, the lantern process itself is gone on this box. Ask another lantern.</div>
   <div class="grid" id="hosts"></div>
   <div class="grid services" id="services"></div>
@@ -95,6 +100,66 @@ function trimDetail(s){
   if (s.check.startsWith("disk:")) return d.replace(new RegExp("^disk "+s.check.slice(5).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+" is "), "");
   return d.replace(new RegExp("^"+s.check+" is "), "");
 }
+
+// The landing page metaphor, but truthful: every firefly is a real box.
+// Lit ones drift and flash in unison, ailing ones flicker dim and erratic,
+// dead ones sit still in ember, unknown ones are hollow ghosts.
+const field = $("field"), fctx = field.getContext("2d");
+const flies = new Map();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function syncFlies(states){
+  const seen = new Set();
+  for (const st of states){
+    seen.add(st.name);
+    let f = flies.get(st.name);
+    if (!f){ f = {x:.08+Math.random()*.84, y:.2+Math.random()*.5, vx:(Math.random()-.5)*.001, vy:(Math.random()-.5)*.0007, jit:Math.random()*6.28}; flies.set(st.name, f); }
+    f.mode = st.mode;
+  }
+  for (const k of [...flies.keys()]) if (!seen.has(k)) flies.delete(k);
+}
+function drawField(t){
+  const W = field.clientWidth, H = field.clientHeight, dpr = window.devicePixelRatio||1;
+  if (field.width !== Math.round(W*dpr)){ field.width = Math.round(W*dpr); field.height = Math.round(H*dpr); }
+  fctx.setTransform(dpr,0,0,dpr,0,0);
+  fctx.clearRect(0,0,W,H);
+  const tt = t/1000;
+  for (const [name,f] of flies){
+    if (!reduced && f.mode!=="dead"){
+      f.vx += (Math.random()-.5)*.00012; f.vy += (Math.random()-.5)*.00009;
+      f.vx = Math.max(-.0012, Math.min(.0012, f.vx));
+      f.vy = Math.max(-.0008, Math.min(.0008, f.vy));
+      f.x += f.vx; f.y += f.vy;
+      if (f.x < .04 || f.x > .96) f.vx *= -1;
+      if (f.y < .12 || f.y > .72) f.vy *= -1;
+      f.x = Math.max(.04, Math.min(.96, f.x));
+      f.y = Math.max(.12, Math.min(.72, f.y));
+    }
+    const x = f.x*W, y = f.y*(H-26)+8;
+    let color = "#FFC24B", alpha, r = 4.5;
+    if (f.mode==="dead"){ color = "#E06A50"; alpha = .95; }
+    else if (f.mode==="ghost"){ color = "#8FA5A3"; alpha = .35; }
+    else if (f.mode==="worse"){
+      alpha = .18 + .4*Math.pow(Math.max(0, Math.sin(tt*3.3 + f.jit)), 6) + (Math.random() < .02 ? .3 : 0);
+    } else {
+      alpha = reduced ? .9 : .22 + .78*Math.pow(Math.max(0, Math.sin(tt*2.6)), 4);
+    }
+    fctx.beginPath();
+    fctx.globalAlpha = Math.min(1, alpha);
+    fctx.fillStyle = color;
+    fctx.shadowColor = color;
+    fctx.shadowBlur = f.mode==="dead" ? 7 : 16*alpha;
+    fctx.arc(x, y, r, 0, 7);
+    fctx.fill();
+    fctx.shadowBlur = 0;
+    fctx.globalAlpha = .9;
+    fctx.font = "10px ui-monospace,Menlo,monospace";
+    fctx.textAlign = "center";
+    fctx.fillStyle = f.mode==="dead" ? "#E06A50" : "#8FA5A3";
+    fctx.fillText(name.split(".")[0].toUpperCase(), x, H-6);
+  }
+  requestAnimationFrame(drawField);
+}
+requestAnimationFrame(drawField);
 
 function render(st){
   $("who").textContent = "lantern " + st.id;
@@ -120,35 +185,46 @@ function render(st){
   const distinct = new Set(Object.values(versions).filter(Boolean));
   const mixed = distinct.size > 1;
 
+  const flyStates = [];
   $("hosts").innerHTML = Object.keys(hosts).sort().map(name => {
     const h = hosts[name];
-    let meta = "", bad = "";
+    let meta = "", live = "", bad = "";
     if (h.live){
-      if (!h.live.voters) meta = `<span class="meta">no fresh word</span>`;
-      else if (h.live.state==="down"){ meta = `<span class="meta bad">DARK · ${h.live.votes}/${h.live.voters} agree, quorum ${h.live.needed}</span>`; bad="trouble"; }
-      else if (h.live.votes>0) meta = `<span class="meta sus">suspected by ${h.live.votes} of ${h.live.voters}, quorum ${h.live.needed}</span>`;
-      else meta = `<span class="meta">lit · ${h.live.voters} vouch</span>`;
+      if (!h.live.voters) live = `<span class="pill ghost">no fresh word</span>`;
+      else if (h.live.state==="down"){ live = `<span class="pill down">DARK · ${h.live.votes}/${h.live.voters}, quorum ${h.live.needed}</span>`; bad="trouble"; }
+      else if (h.live.votes>0) live = `<span class="pill warn">suspected ${h.live.votes}/${h.live.voters}</span>`;
+      else live = `<span class="pill quiet">lit · ${h.live.voters >= st.swarm.length-1 ? "all vouch" : h.live.voters + " vouch"}</span>`;
+      live = `<span class="liv">${live}</span>`;
     }
-    if (h.skew && h.skew.voters){
-      meta += (h.skew.state!=="up"||h.skew.votes>0)
-        ? ` <span class="meta sus">clock drifting</span>`
-        : ` <span class="meta">clock in step</span>`;
+    if (h.skew && h.skew.voters && (h.skew.state!=="up"||h.skew.votes>0)){
+      meta += ` <span class="meta sus" title="peers measure this box's clock against their own from flash timestamps; drifting means beyond 5s by quorum">clock drifting</span>`;
     }
-    if (mixed && versions[name]) meta += ` <span class="meta">· ${esc(versions[name].split(" ")[0])}</span>`;
     h.rows.sort((a,b)=> rank(a)-rank(b) || a.check.localeCompare(b.check));
     if (!bad && h.rows.some(s => s.voters && (s.state==="warn" || s.votes>0))) bad = "warned";
     const rows = h.rows.map(s => {
       const [w,cls] = word(s);
-      return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk">${esc(s.check)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
+      const label = s.check === "disk:/" ? "disk" : s.check.startsWith("disk:") ? "disk " + s.check.slice(5) : s.check;
+      return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk">${esc(label)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
     }).join("");
+    let mode = "lit";
+    if (h.live){
+      if (!h.live.voters) mode = "ghost";
+      else if (h.live.state==="down") mode = "dead";
+      else if (h.live.votes>0 || bad==="warned") mode = "worse";
+    } else if (bad==="warned") mode = "worse";
+    flyStates.push({name, mode});
     const platform = (versions[name]||"").split(" ")[1] || "";
     let archCls = "";
     if (platform.startsWith("darwin")) archCls = "arch-mac";
     else if (platform.includes("arm")) archCls = "arch-arm";
     else if (platform.startsWith("windows")) archCls = "arch-win";
     const shortName = name.split(".")[0].toUpperCase();
-    return `<div class="card ${bad}"><h2><span class="hn ${archCls}" title="${esc(name)} · ${esc(versions[name]||"version unknown")}">${esc(shortName)}</span> ${meta}</h2><table>${rows}</table></div>`;
+    const archTag = platform ? `<span class="meta" style="font-weight:400;opacity:.8">${esc(platform)}</span>` : "";
+    const vfoot = `<div class="vfoot">${versions[name] ? "photinus " + esc(versions[name].split(" ")[0]) : "version unknown"}</div>`;
+    return `<div class="card ${bad}"><h2><span class="hn ${archCls}" title="${esc(name)} · ${esc(versions[name]||"version unknown")}">${esc(shortName)}</span>${archTag} ${meta}${live}</h2><table>${rows}</table>${vfoot}</div>`;
   }).join("");
+
+  syncFlies(flyStates);
 
   const svcType = s => {
     if (s.check==="http") return s.target.startsWith("http://") ? "http" : "https";

@@ -51,6 +51,15 @@ func Elect(alertID string, alive []string) string {
 	return winner
 }
 
+// Flapping bounds. Four transitions inside the window is a flap; one page
+// says so and the subject then holds its tongue until it kept one state
+// for the whole settle period.
+const (
+	flapWindow  = 10 * time.Minute
+	flapCount   = 4
+	settleAfter = 5 * time.Minute
+)
+
 // Tracker turns the stream of quorum decisions into events, firing only on
 // state changes and only when this lantern wins the election for the alert.
 type Tracker struct {
@@ -59,9 +68,11 @@ type Tracker struct {
 	send   Sender
 	log    *log.Logger
 
-	start   time.Time
-	state   map[string]string // subject -> last known state
-	elected map[string]string // subject -> lantern elected to notify while not up
+	start       time.Time
+	state       map[string]string      // subject -> last known state
+	elected     map[string]string      // subject -> lantern elected to notify while not up
+	transitions map[string][]time.Time // subject -> recent state changes
+	flapping    map[string]bool        // subject -> currently damped
 }
 
 // New builds a tracker. The warmup is how long after the first observation
@@ -72,12 +83,14 @@ func New(self string, warmup time.Duration, send Sender, logger *log.Logger) *Tr
 		logger = log.New(io.Discard, "", 0)
 	}
 	return &Tracker{
-		self:    self,
-		warmup:  warmup,
-		send:    send,
-		log:     logger,
-		state:   make(map[string]string),
-		elected: make(map[string]string),
+		self:        self,
+		warmup:      warmup,
+		send:        send,
+		log:         logger,
+		state:       make(map[string]string),
+		elected:     make(map[string]string),
+		transitions: make(map[string][]time.Time),
+		flapping:    make(map[string]bool),
 	}
 }
 
@@ -110,10 +123,27 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 		cur := d.State
 
 		if cur == prev {
-			// Unchanged. If the subject is not healthy and the lantern
-			// elected to notify has died since, the next winner owes the
-			// operator that message: it cannot know whether the dead one
-			// got it out, and a duplicate beats silence.
+			// Unchanged. A flapping subject that has now held one state
+			// for the whole settle period gets its closing word; a
+			// non-healthy subject whose elected sender died gets a
+			// takeover page, since survivors cannot know the original
+			// page got out, and a duplicate beats silence.
+			if t.flapping[subject] {
+				hist := t.transitions[subject]
+				if len(hist) > 0 && now.Sub(hist[len(hist)-1]) >= settleAfter {
+					delete(t.flapping, subject)
+					delete(t.transitions, subject)
+					winner := Elect(subject, alive)
+					t.log.Printf("%s settled at %s after flapping, lantern %s sends the settled notification", subject, stateWord(cur), winner)
+					if winner == t.self {
+						ev := Event{Kind: "settled", Check: d.Check, Target: d.Target,
+							Detail: fmt.Sprintf("%s on %s settled: %s, after flapping", d.Check, d.Target, stateWord(cur))}
+						t.send(ev)
+						sent = append(sent, ev)
+					}
+				}
+				continue
+			}
 			if cur != quorum.StateUp {
 				if e := t.elected[subject]; !slices.Contains(alive, e) {
 					winner := Elect(subject, alive)
@@ -129,7 +159,33 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 			continue
 		}
 
+		// A transition. Record it and check for flapping before speaking:
+		// fifty pages that each say still bouncing carry less information
+		// than one page that says so.
 		t.state[subject] = cur
+		hist := append(t.transitions[subject], now)
+		for len(hist) > 0 && now.Sub(hist[0]) > flapWindow {
+			hist = hist[1:]
+		}
+		t.transitions[subject] = hist
+
+		if t.flapping[subject] {
+			continue
+		}
+		if len(hist) >= flapCount {
+			t.flapping[subject] = true
+			winner := Elect(subject, alive)
+			t.elected[subject] = winner
+			t.log.Printf("%s is flapping, %d changes in %s, lantern %s sends the flapping notification", subject, len(hist), flapWindow, winner)
+			if winner == t.self {
+				ev := Event{Kind: "flapping", Check: d.Check, Target: d.Target,
+					Detail: fmt.Sprintf("%s on %s is flapping: %d state changes in %s, holding pages until it settles", d.Check, d.Target, len(hist), flapWindow)}
+				t.send(ev)
+				sent = append(sent, ev)
+			}
+			continue
+		}
+
 		kind := kindFor(prev, cur)
 		winner := Elect(subject, alive)
 		if cur == quorum.StateUp {

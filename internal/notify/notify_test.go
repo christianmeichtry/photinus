@@ -233,3 +233,88 @@ func TestTracker(t *testing.T) {
 		}
 	})
 }
+
+func TestFlapDamping(t *testing.T) {
+	base := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	alive := []string{"l1", "l2", "l3"}
+	winner := Elect("tcp db:5432", alive)
+
+	dec := func(state string) quorum.Decision {
+		return quorum.Decision{Target: "db:5432", Check: "tcp", State: state, Votes: 3, Voters: 3, Needed: 2, SwarmSize: 3}
+	}
+	newTracker := func() (*Tracker, *[]Event) {
+		var delivered []Event
+		tr := New(winner, 0, func(e Event) { delivered = append(delivered, e) }, nil)
+		tr.Observe(nil, nil, base.Add(-time.Hour))
+		return tr, &delivered
+	}
+
+	t.Run("a storm collapses into one flapping page and one settled page", func(t *testing.T) {
+		tr, delivered := newTracker()
+		// Bounce every 30 seconds, Bespin style.
+		state, last := quorum.StateDown, quorum.StateDown
+		when := base
+		for i := 0; i < 12; i++ {
+			tr.Observe([]quorum.Decision{dec(state)}, alive, when)
+			last = state
+			if state == quorum.StateDown {
+				state = quorum.StateUp
+			} else {
+				state = quorum.StateDown
+			}
+			when = when.Add(30 * time.Second)
+		}
+		kinds := []string{}
+		for _, e := range *delivered {
+			kinds = append(kinds, e.Kind)
+		}
+		// First bounces page normally (down, recovered, down), the fourth
+		// transition inside the window trips the damper.
+		flaps := 0
+		for _, k := range kinds {
+			if k == "flapping" {
+				flaps++
+			}
+		}
+		if flaps != 1 {
+			t.Fatalf("kinds = %v, want exactly one flapping page", kinds)
+		}
+		if len(kinds) > 4 {
+			t.Fatalf("kinds = %v: the storm was not damped", kinds)
+		}
+		// Now hold the last state long enough to settle.
+		settled := when.Add(settleAfter + time.Minute)
+		tr.Observe([]quorum.Decision{dec(last)}, alive, settled)
+		kinds = nil
+		for _, e := range *delivered {
+			kinds = append(kinds, e.Kind)
+		}
+		if kinds[len(kinds)-1] != "settled" {
+			t.Fatalf("kinds = %v, want a settled page at the end", kinds)
+		}
+	})
+
+	t.Run("a fresh outage after settling pages normally again", func(t *testing.T) {
+		tr, delivered := newTracker()
+		when := base
+		state := quorum.StateDown
+		for i := 0; i < 6; i++ {
+			tr.Observe([]quorum.Decision{dec(state)}, alive, when)
+			if state == quorum.StateDown {
+				state = quorum.StateUp
+			} else {
+				state = quorum.StateDown
+			}
+			when = when.Add(30 * time.Second)
+		}
+		// settle at up
+		tr.Observe([]quorum.Decision{dec(quorum.StateUp)}, alive, when.Add(settleAfter+time.Minute))
+		before := len(*delivered)
+		// a real outage hours later must page immediately
+		late := when.Add(2 * time.Hour)
+		tr.Observe([]quorum.Decision{dec(quorum.StateDown)}, alive, late)
+		if len(*delivered) != before+1 || (*delivered)[len(*delivered)-1].Kind != "down" {
+			t.Fatalf("real outage after settling did not page: %+v", (*delivered)[before:])
+		}
+	})
+}

@@ -55,6 +55,7 @@ type Lantern struct {
 	store       map[string]quorum.Observation
 	clocks      map[string]*peerClock
 	lastSeen    map[string]time.Time
+	lastRun     map[string]time.Time
 	badVersions map[int]bool
 	sw          *swarm.Swarm
 }
@@ -84,6 +85,7 @@ func New(cfg Config) *Lantern {
 		store:       make(map[string]quorum.Observation),
 		clocks:      make(map[string]*peerClock),
 		lastSeen:    make(map[string]time.Time),
+		lastRun:     make(map[string]time.Time),
 		badVersions: make(map[int]bool),
 	}
 }
@@ -111,14 +113,28 @@ func (l *Lantern) Run(ctx context.Context) {
 	}
 }
 
-// flash runs the local checks, stores the results as this lantern's own
-// observations, and gossips them. Only own observations are gossiped:
-// memberlist's broadcast queue handles spreading them swarm-wide, so fan-out
-// stays constant instead of growing with the swarm.
+// flash runs the local checks that are due, stores the results as this
+// lantern's own observations, and gossips its whole current view of itself.
+// Paced checks run on their own cadence; their last verdict keeps riding
+// every flash with a TTL that outlives the gap, so slow checks never look
+// stale. Only own observations are gossiped: memberlist's broadcast queue
+// spreads them swarm-wide, so fan-out stays constant.
 func (l *Lantern) flash(ctx context.Context) {
 	now := time.Now().UTC()
-	own := make([]quorum.Observation, 0, len(l.checks))
+	fresh := make([]quorum.Observation, 0, len(l.checks))
 	for _, c := range l.checks {
+		// Only genuinely paced checks are gated; everything else runs on
+		// every flash, immune to ticker jitter.
+		every := l.interval
+		if p, ok := c.(check.Paced); ok && p.Every() > every {
+			every = p.Every()
+			key := c.Name() + "|" + c.Target()
+			if last, ok := l.lastRun[key]; ok && now.Sub(last) < every {
+				continue
+			}
+			l.lastRun[key] = now
+		}
+
 		res := c.Run(ctx)
 		var state string
 		switch res.Verdict {
@@ -131,24 +147,39 @@ func (l *Lantern) flash(ctx context.Context) {
 		default:
 			continue
 		}
-		own = append(own, quorum.Observation{
+		ttl := 0
+		if every > l.interval {
+			ttl = int(5 * every / time.Second)
+		}
+		fresh = append(fresh, quorum.Observation{
 			Observer: l.id,
 			Target:   c.Target(),
 			Check:    c.Name(),
 			State:    state,
 			Detail:   res.Detail,
 			Seen:     now,
+			TTL:      ttl,
 		})
 	}
 
 	l.mu.Lock()
-	own = append(own, l.skewObservations(now)...)
+	fresh = append(fresh, l.skewObservations(now)...)
 	sw := l.sw
 	if sw != nil {
-		own = append(own, l.livenessObservations(sw.Members(), sw.Roster(), now)...)
+		fresh = append(fresh, l.livenessObservations(sw.Members(), sw.Roster(), now)...)
 	}
-	for _, o := range own {
+	for _, o := range fresh {
 		l.store[storeKey(o)] = o
+	}
+	l.prune(now)
+	// The flash carries everything this lantern currently believes about
+	// its own checks, not just what ran this cycle, so late joiners hear
+	// about slow-paced subjects without waiting a cadence.
+	var own []quorum.Observation
+	for _, o := range l.store {
+		if o.Observer == l.id {
+			own = append(own, o)
+		}
 	}
 	l.mu.Unlock()
 
@@ -229,6 +260,25 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 
 func storeKey(o quorum.Observation) string {
 	return o.Observer + "|" + o.Check + "|" + o.Target
+}
+
+// prune drops observations long past any chance of counting again, so
+// removed checks and decommissioned boxes fade from status instead of
+// haunting it forever. Callers hold l.mu.
+func (l *Lantern) prune(now time.Time) {
+	for k, o := range l.store {
+		ttl := l.maxAge
+		if o.TTL > 0 {
+			ttl = time.Duration(o.TTL) * time.Second
+		}
+		horizon := 3 * ttl
+		if horizon < time.Hour {
+			horizon = time.Hour
+		}
+		if now.Sub(o.Seen) > horizon {
+			delete(l.store, k)
+		}
+	}
 }
 
 // SubjectStatus is the swarm's view of one check on one target.

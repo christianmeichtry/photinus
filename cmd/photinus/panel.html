@@ -33,6 +33,7 @@
   .pill.down{background:var(--down);color:var(--dusk)}
   .pill.warn{background:var(--warn);color:var(--dusk)}
   .pill.ghost{background:transparent;border:1px solid var(--rule);color:var(--dim)}
+  .pill.name{background:rgba(232,226,210,.12);color:var(--ink);font-family:var(--mono);letter-spacing:.05em}
   .liv{margin-left:auto}
 
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(21rem,1fr));gap:1rem;grid-auto-rows:1fr}
@@ -189,7 +190,7 @@ function drawField(t){
 requestAnimationFrame(drawField);
 
 function render(st){
-  $("who").textContent = "lantern " + st.id;
+  $("who").innerHTML = `lantern <span class="pill name" title="${esc(st.id)}">${esc(st.id.split(".")[0].toUpperCase())}</span>`;
   const downs = st.subjects.filter(s=>s.voters && s.state==="down").length;
   const warns = st.subjects.filter(s=>s.voters && s.state==="warn").length;
   let extra = downs||warns
@@ -268,7 +269,7 @@ function render(st){
       return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk"><span class="typ">${svcType(s)}</span>${esc(s.target)}<span class="det">${esc(s.detail||"")} <span class="agree">· ${agree}</span></span></td></tr>`;
     }).join("") + `</table></div>` : "";
 
-  $("served").textContent = "served by " + st.id;
+  $("served").textContent = "served by " + st.id.split(".")[0].toUpperCase();
   $("stamp").textContent = "refreshed " + new Date().toLocaleTimeString();
 }
 

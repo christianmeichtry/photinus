@@ -26,6 +26,10 @@ type Observation struct {
 	State  string    `json:"state"`
 	Detail string    `json:"detail,omitempty"`
 	Seen   time.Time `json:"seen"`
+	// TTL, in seconds, is how long this observation stays a valid vote.
+	// Zero means the caller's default aging window. Slow-paced checks set
+	// it so their votes survive between runs. Additive since wire v1.
+	TTL int `json:"ttl,omitempty"`
 }
 
 // Subject names what an observation is about, regardless of who observed it.
@@ -80,7 +84,11 @@ func Decide(target, checkName string, obs []Observation, lastKnownSize int, maxA
 		if o.Target != target || o.Check != checkName {
 			continue
 		}
-		if maxAge > 0 && now.Sub(o.Seen) > maxAge {
+		cutoff := maxAge
+		if o.TTL > 0 {
+			cutoff = time.Duration(o.TTL) * time.Second
+		}
+		if cutoff > 0 && now.Sub(o.Seen) > cutoff {
 			continue
 		}
 		if prev, ok := newest[o.Observer]; !ok || o.Seen.After(prev.Seen) {

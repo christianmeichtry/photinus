@@ -224,3 +224,21 @@ func TestDecideAuthority(t *testing.T) {
 		})
 	}
 }
+
+func TestDecideTTL(t *testing.T) {
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	maxAge := 10 * time.Second
+	// A cert observation from 20 minutes ago with a 5 hour TTL must still
+	// vote, while a default observation of the same age must not.
+	slow := Observation{Observer: "l1", Target: "site:443", Check: "cert", State: StateWarn,
+		TTL: 18000, Seen: now.Add(-20 * time.Minute)}
+	stale := Observation{Observer: "l2", Target: "site:443", Check: "cert", State: StateWarn,
+		Seen: now.Add(-20 * time.Minute)}
+	got := Decide("site:443", "cert", []Observation{slow, stale}, 1, maxAge, now)
+	if got.Voters != 1 {
+		t.Errorf("Voters = %d, want 1: TTL observation counts, default-aged one does not", got.Voters)
+	}
+	if got.State != StateWarn {
+		t.Errorf("State = %s, want warn from the TTL observation", got.State)
+	}
+}

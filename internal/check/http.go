@@ -57,3 +57,7 @@ func (h HTTP) Run(ctx context.Context) Result {
 	}
 	return Result{Verdict: OK, Detail: fmt.Sprintf("%s in %s", resp.Status, elapsed)}
 }
+
+// Every keeps the fleet polite: a TLS handshake against a production site
+// every flash would be thousands of hits a day from every lantern.
+func (h HTTP) Every() time.Duration { return 5 * time.Minute }

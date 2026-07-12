@@ -82,3 +82,7 @@ func certVerdict(leaf *x509.Certificate, warnWithin time.Duration, now time.Time
 		return Result{Verdict: OK, Detail: fmt.Sprintf("valid, %s left (%s)", humanDuration(left), issuer)}
 	}
 }
+
+// Every reflects how often certificates actually change: renewals land
+// daily at most, and the warning window is measured in days.
+func (c Cert) Every() time.Duration { return time.Hour }

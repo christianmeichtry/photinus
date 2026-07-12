@@ -39,3 +39,7 @@ func (t TCP) Run(ctx context.Context) Result {
 	conn.Close()
 	return Result{Verdict: OK, Detail: fmt.Sprintf("connected to %s", t.Addr)}
 }
+
+// Every keeps port probes of other people's boxes to a civil rate. Host
+// death among lanterns is detected by membership, not by this.
+func (t TCP) Every() time.Duration { return 5 * time.Minute }

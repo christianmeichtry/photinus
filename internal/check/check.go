@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // errUnsupported is returned by platform probes on operating systems that
@@ -64,6 +65,15 @@ func (v Verdict) String() string {
 type Result struct {
 	Verdict Verdict
 	Detail  string
+}
+
+// Paced is implemented by checks too heavy or too slow-moving to run every
+// flash: TLS handshakes against production websites do not belong in a two
+// second loop. The lantern runs a paced check on its own cadence and keeps
+// gossiping the last verdict in between.
+type Paced interface {
+	// Every is the interval between runs of this check.
+	Every() time.Duration
 }
 
 // A Check tests one thing about one target.

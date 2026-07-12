@@ -1,10 +1,12 @@
 package lantern
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/christianmeichtry/photinus/internal/check"
 	"github.com/christianmeichtry/photinus/internal/quorum"
 )
 
@@ -132,4 +134,38 @@ func TestReceiveFlashVersions(t *testing.T) {
 			t.Errorf("a future version's flash was merged: %d entries", len(l.store))
 		}
 	})
+}
+
+type pacedFake struct {
+	runs   int
+	every  time.Duration
+	target string
+}
+
+func (p *pacedFake) Name() string         { return "fake" }
+func (p *pacedFake) Target() string       { return p.target }
+func (p *pacedFake) Every() time.Duration { return p.every }
+func (p *pacedFake) Run(ctx context.Context) check.Result {
+	p.runs++
+	return check.Result{Verdict: check.OK, Detail: "ran"}
+}
+
+func TestPacedChecksRunOnTheirOwnCadence(t *testing.T) {
+	fast := &pacedFake{every: 0, target: "fast"}
+	slow := &pacedFake{every: time.Hour, target: "slow"}
+	l := New(Config{ID: "l1", Interval: time.Second, Checks: []check.Check{fast, slow}})
+	for i := 0; i < 3; i++ {
+		l.flash(context.Background())
+	}
+	if fast.runs != 3 {
+		t.Errorf("unpaced check ran %d times over 3 flashes, want 3", fast.runs)
+	}
+	if slow.runs != 1 {
+		t.Errorf("hourly check ran %d times over 3 flashes, want 1", slow.runs)
+	}
+	// The slow check's verdict still rides every flash via the store.
+	key := "l1|fake|slow"
+	if o, ok := l.store[key]; !ok || o.TTL == 0 {
+		t.Errorf("paced observation missing or without TTL: %+v", o)
+	}
 }

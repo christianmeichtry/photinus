@@ -13,7 +13,7 @@
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--dusk);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:1.5rem}
+  body{background:var(--dusk);color:var(--ink);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;padding:1.5rem}
   .wrap{max-width:72rem;margin:0 auto}
 
   header{display:flex;flex-wrap:wrap;align-items:baseline;gap:.6rem 1.2rem;margin-bottom:1.4rem}
@@ -24,29 +24,41 @@
     .brand::before{animation:flash 2.4s ease-in-out infinite}
     @keyframes flash{0%,100%{opacity:.35}50%{opacity:1}}
   }
-  h1{font-size:1.05rem;font-weight:600}
-  .summary{font-family:var(--mono);font-size:.8rem;color:var(--dim)}
-  .summary b{font-weight:600}
-  .quiet{color:var(--up)} .c-down{color:var(--down);font-weight:600} .c-warn{color:var(--warn)}
+  h1{font-size:1.2rem;font-weight:600}
+  .summary{font-family:var(--mono);font-size:.88rem;color:var(--dim);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+  .summary b{font-weight:600;color:var(--ink)}
+  .pill{display:inline-block;padding:.12rem .65rem;border-radius:99px;font-weight:700;font-size:.82rem}
+  .pill.quiet{background:rgba(127,168,147,.18);color:var(--up)}
+  .pill.down{background:var(--down);color:var(--dusk)}
+  .pill.warn{background:var(--warn);color:var(--dusk)}
 
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(21rem,1fr));gap:1rem}
   .card{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:.9rem 1rem}
   .card.trouble{border-color:var(--down)}
-  .card h2{font-size:.95rem;font-weight:650;display:flex;flex-wrap:wrap;gap:.35rem .7rem;align-items:baseline}
-  .card h2 .meta{font-family:var(--mono);font-size:.72rem;font-weight:400;color:var(--dim)}
+  .card h2{font-size:1.1rem;font-weight:650;display:flex;flex-wrap:wrap;gap:.35rem .7rem;align-items:baseline}
+  .card h2 .meta{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--dim)}
   .card h2 .meta.bad{color:var(--down);font-weight:600}
   .card h2 .meta.sus{color:var(--warn)}
 
   table{width:100%;border-collapse:collapse;margin-top:.6rem}
-  td{padding:.28rem .4rem .28rem 0;vertical-align:top;border-top:1px solid var(--rule);font-size:.84rem}
+  td{padding:.38rem .5rem .38rem 0;vertical-align:top;border-top:1px solid var(--rule);font-size:.95rem;overflow-wrap:anywhere}
   tr:first-child td{border-top:0}
-  .st{font-family:var(--mono);font-size:.72rem;white-space:nowrap;width:3.6rem}
-  .st.up{color:var(--up)} .st.warn{color:var(--warn);font-weight:600}
-  .st.down{color:var(--down);font-weight:700} .st.stale{color:var(--dim)}
-  .chk{font-family:var(--mono);font-size:.78rem;white-space:nowrap;width:7rem;color:var(--ink)}
+  .st{white-space:nowrap;width:4.4rem}
+  .st span{display:inline-block;font-family:var(--mono);font-size:.76rem;font-weight:700;padding:.08rem .5rem;border-radius:99px}
+  .st.up span{background:rgba(127,168,147,.28);color:var(--up)}
+  .st.warn span{background:var(--warn);color:var(--dusk)}
+  .st.down span{background:var(--down);color:var(--dusk)}
+  .st.stale span{background:transparent;border:1px solid var(--rule);color:var(--dim)}
+  .chk{font-family:var(--mono);font-size:.88rem;width:7rem;color:var(--ink)}
   .det{color:var(--dim)}
+  .det .agree{opacity:.65;font-family:var(--mono);font-size:.8rem}
 
+  .card.warned{border-color:rgba(255,194,75,.55)}
+  .typ{display:inline-block;font-family:var(--mono);font-size:.72rem;font-weight:700;color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:0 .4rem;margin-right:.5rem;vertical-align:.08rem}
   .services{margin-top:1rem}
+  .services .card{grid-column:1 / -1}
+  .services .chk{width:auto;white-space:normal}
+  .services .det{display:block;margin-top:.1rem}
   footer{margin-top:1.6rem;font-family:var(--mono);font-size:.72rem;color:var(--dim);display:flex;gap:1.5rem;flex-wrap:wrap}
   #err{display:none;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--down);border-radius:8px;color:var(--down);font-size:.85rem}
 </style>
@@ -73,7 +85,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function rank(s){ if(!s.voters) return 3; if(s.state==="down") return 0; if(s.state==="warn") return 1; if(s.votes>0) return 2; return 4; }
-function word(s){ if(!s.voters) return ["?","stale"]; if(s.state==="down") return ["DOWN","down"]; if(s.state==="warn") return ["WARN","warn"]; if(s.votes>0) return ["sus","warn"]; return ["up","up"]; }
+function word(s){ if(!s.voters) return ["?","stale"]; if(s.state==="down") return ["DOWN","down"]; if(s.state==="warn") return ["WARN","warn"]; if(s.votes>0) return ["SUS","warn"]; return ["UP","up"]; }
 function trimDetail(s){
   let d = s.detail || "";
   if (s.check.startsWith("disk:")) return d.replace(new RegExp("^disk "+s.check.slice(5).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+" is "), "");
@@ -85,9 +97,9 @@ function render(st){
   const downs = st.subjects.filter(s=>s.voters && s.state==="down").length;
   const warns = st.subjects.filter(s=>s.voters && s.state==="warn").length;
   let extra = downs||warns
-    ? (downs? `<span class="c-down">${downs} down</span>`:"") + (downs&&warns?", ":"") + (warns? `<span class="c-warn">${warns} warning${warns>1?"s":""}</span>`:"")
-    : `<span class="quiet">all quiet</span>`;
-  $("sum").innerHTML = `swarm <b>${st.swarm.length}</b> lit of <b>${st.last_known_size}</b> known · ` + extra;
+    ? (downs? `<span class="pill down">${downs} DOWN</span>`:"") + (warns? `<span class="pill warn">${warns} warning${warns>1?"s":""}</span>`:"")
+    : `<span class="pill quiet">all quiet</span>`;
+  $("sum").innerHTML = `<span>swarm <b>${st.swarm.length}</b> lit of <b>${st.last_known_size}</b> known</span>` + extra;
 
   const hosts = {};
   for (const s of st.subjects) if (s.check==="lantern"||s.check==="skew"||s.authority) hosts[s.target] ??= {rows:[]};
@@ -120,20 +132,27 @@ function render(st){
     }
     if (mixed && versions[name]) meta += ` <span class="meta">· ${esc(versions[name])}</span>`;
     h.rows.sort((a,b)=> rank(a)-rank(b) || a.check.localeCompare(b.check));
+    if (!bad && h.rows.some(s => s.voters && (s.state==="warn" || s.votes>0))) bad = "warned";
     const rows = h.rows.map(s => {
       const [w,cls] = word(s);
-      return `<tr><td class="st ${cls}">${w}</td><td class="chk">${esc(s.check)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
+      return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk">${esc(s.check)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
     }).join("");
     return `<div class="card ${bad}"><h2>${esc(name)} ${meta}</h2><table>${rows}</table></div>`;
   }).join("");
 
-  services.sort((a,b)=> rank(a)-rank(b) || a.target.localeCompare(b.target));
+  const svcType = s => {
+    if (s.check==="http") return s.target.startsWith("http://") ? "http" : "https";
+    if (s.check==="cert") return "cert";
+    if (s.check==="tcp") return s.target.endsWith(":22") ? "ssh" : "tcp";
+    return s.check;
+  };
+  services.sort((a,b)=> svcType(a).localeCompare(svcType(b)) || rank(a)-rank(b) || a.target.localeCompare(b.target));
   $("services").innerHTML = services.length ? `<div class="card"><h2>watched services</h2><table>` +
     services.map(s => {
       const [w,cls] = word(s);
       const agree = !s.voters ? "no fresh word" : s.authority ? "own report"
         : (s.state!=="up"||s.votes>0) ? `${s.votes}/${s.voters}, quorum ${s.needed}` : `${s.voters} lantern${s.voters>1?"s":""}`;
-      return `<tr><td class="st ${cls}">${w}</td><td class="chk">${esc(s.target)}</td><td class="det">${esc(s.detail||"")} <span style="opacity:.6">(${agree})</span></td></tr>`;
+      return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk"><span class="typ">${svcType(s)}</span>${esc(s.target)}<span class="det">${esc(s.detail||"")} <span class="agree">· ${agree}</span></span></td></tr>`;
     }).join("") + `</table></div>` : "";
 
   $("served").textContent = "served by " + st.id;

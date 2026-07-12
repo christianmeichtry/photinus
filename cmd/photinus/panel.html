@@ -36,6 +36,10 @@
   .card{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:.9rem 1rem}
   .card.trouble{border-color:var(--down)}
   .card h2{font-size:1.1rem;font-weight:650;display:flex;flex-wrap:wrap;gap:.35rem .7rem;align-items:baseline}
+  .hn{font-weight:750;letter-spacing:.06em}
+  .hn.arch-arm{color:#7FB4D9}
+  .hn.arch-mac{color:#C9A3E0}
+  .hn.arch-win{color:#E0B4A3}
   .card h2 .meta{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--dim)}
   .card h2 .meta.bad{color:var(--down);font-weight:600}
   .card h2 .meta.sus{color:var(--warn)}
@@ -130,14 +134,20 @@ function render(st){
         ? ` <span class="meta sus">clock drifting</span>`
         : ` <span class="meta">clock in step</span>`;
     }
-    if (mixed && versions[name]) meta += ` <span class="meta">· ${esc(versions[name])}</span>`;
+    if (mixed && versions[name]) meta += ` <span class="meta">· ${esc(versions[name].split(" ")[0])}</span>`;
     h.rows.sort((a,b)=> rank(a)-rank(b) || a.check.localeCompare(b.check));
     if (!bad && h.rows.some(s => s.voters && (s.state==="warn" || s.votes>0))) bad = "warned";
     const rows = h.rows.map(s => {
       const [w,cls] = word(s);
       return `<tr><td class="st ${cls}"><span>${w}</span></td><td class="chk">${esc(s.check)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
     }).join("");
-    return `<div class="card ${bad}"><h2>${esc(name)} ${meta}</h2><table>${rows}</table></div>`;
+    const platform = (versions[name]||"").split(" ")[1] || "";
+    let archCls = "";
+    if (platform.startsWith("darwin")) archCls = "arch-mac";
+    else if (platform.includes("arm")) archCls = "arch-arm";
+    else if (platform.startsWith("windows")) archCls = "arch-win";
+    const shortName = name.split(".")[0].toUpperCase();
+    return `<div class="card ${bad}"><h2><span class="hn ${archCls}" title="${esc(name)} · ${esc(versions[name]||"version unknown")}">${esc(shortName)}</span> ${meta}</h2><table>${rows}</table></div>`;
   }).join("");
 
   const svcType = s => {

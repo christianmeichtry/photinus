@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -289,10 +290,12 @@ func (b broadcast) Finished()                             {}
 // delegate carries flashes over memberlist's gossip messages.
 type delegate struct{ s *Swarm }
 
-// NodeMeta announces this lantern's release, so the swarm can see version
-// skew during rolling upgrades.
+// NodeMeta announces this lantern's release and platform, so the swarm can
+// see version skew during rolling upgrades and operators can tell their
+// architectures apart. Additive changes only: consumers split on spaces
+// and ignore fields they do not know.
 func (d *delegate) NodeMeta(limit int) []byte {
-	v := version.Release
+	v := version.Release + " " + runtime.GOOS + "/" + runtime.GOARCH
 	if len(v) > limit {
 		v = v[:limit]
 	}

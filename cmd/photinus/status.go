@@ -75,14 +75,17 @@ func statusCmd(args []string) error {
 		} else if s.Votes > 0 {
 			verdict = fmt.Sprintf("suspected by %d, quorum needs %d", s.Votes, s.Needed)
 		}
-		fmt.Printf("%-5s %-24s %s (%d/%d lanterns agree, swarm of %d)\n",
-			s.Check, s.Target, verdict, s.Votes, s.Needed, s.SwarmSize)
+		how := fmt.Sprintf("%d/%d lanterns agree, swarm of %d", s.Votes, s.Needed, s.SwarmSize)
+		if s.Authority {
+			how = "the host's own lantern says so"
+		}
+		fmt.Printf("%-12s %-18s %s (%s)\n", s.Check, s.Target, verdict, how)
 		for _, o := range s.Observations {
 			state := "up"
 			if !o.Healthy {
 				state = "down"
 			}
-			fmt.Printf("      %-24s %s says %s: %s\n", "", o.Observer, state, o.Detail)
+			fmt.Printf("             %s says %s: %s\n", o.Observer, state, o.Detail)
 		}
 	}
 	return nil

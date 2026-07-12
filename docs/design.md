@@ -67,6 +67,58 @@ A dead lantern's last opinion therefore fades instead of voting forever. The
 age cut lives in `quorum.Decide` and is applied at decision time, not at
 merge time, so the store stays a plain newest-wins map.
 
+### The authority rule: local checks do not need quorum
+
+Only one lantern can see its own disk, so a local check could never reach a
+majority. Rule 4 already contains the answer: a lantern is the sole authority
+on its own local checks. In code, local checks set their observation's target
+to the lantern's own ID, and `quorum.Decide` treats an observation whose
+observer equals its target as authoritative: it decides alone, needs no
+agreement, and hearsay about the same subject never mixes with it. If the
+authority's observation goes stale (the host died with its lantern), the
+subject falls back to ordinary quorum, which in practice means the tcp checks
+and membership take over the story of that host.
+
+### Resource checks and what they measure
+
+`uptime`, `disk`, `cpu`, `memory`, and `swap` are threshold checks on the
+current value, per the non-goal of never storing history. Platform probes
+live behind build tags; on platforms without a probe (currently Windows,
+which is on the roadmap) they report "not applicable" and never fail.
+
+- Linux reads `/proc`: uptime, meminfo for memory and swap, and cpu
+  utilization as the delta of `/proc/stat` ticks between flashes, which is
+  real utilization averaged over one interval.
+- macOS reads sysctls. Memory leans on `kern.memorystatus_level`, the
+  kernel's own estimate of available memory in percent; counting free pages
+  would read a healthy Mac as nearly full, because file cache is kept hot on
+  purpose. CPU has no tick counters in sysctl, so the probe approximates
+  utilization as the one minute load average spread over the cores; it
+  overcounts when processes wait on disk and undercounts short bursts, both
+  fine for a threshold check. Swap parses `vm.swapusage` and remembers that
+  macOS resizes swap dynamically.
+- A host with no swap configured reports OK, not "not applicable": nothing
+  can fill up, which is the healthy answer.
+
+### Skew, the relational check
+
+Skew measures clock drift between lanterns from the timestamps flashes
+already carry, and it is the reason the check lives in `internal/lantern`
+rather than `internal/check`: it produces one observation per peer and needs
+the received flashes to do it. A flash stamped S arriving at local time A
+gives A minus S, which is the true offset plus transit delay. Delay is always
+positive, so the minimum over a sliding window of fresh flashes approaches
+the true offset; re-gossiped old flashes are filtered out by only sampling
+stamps newer than anything heard from that peer before.
+
+The aggregation does the diagnosis without any extra machinery. A peer with
+a wrong clock is observed skewed by every lantern and quorum convicts it. A
+lantern whose own clock is wrong accuses everyone, convinces nobody, and is
+itself convicted by the rest of the swarm. Skew also matters for a selfish
+reason: observation aging compares peer stamps against the local clock, so a
+lantern drifted beyond maxAge silently loses its vote. The default threshold
+of 5 seconds sits inside the default aging window of 10 seconds.
+
 ## Verified behavior (the milestone)
 
 Two lanterns on one machine, seeded at each other, both watching a TCP port
@@ -81,10 +133,10 @@ with nothing listening:
 
 ## Open problems, in rough order of next
 
-1. Graceful-leave shrinking of the ever-seen ledger, and alerting on
+1. `internal/notify` with deterministic hash election.
+2. Graceful-leave shrinking of the ever-seen ledger, and alerting on
    partition (the two halves of the partition problem in CLAUDE.md).
-2. The remaining check types: uptime, disk, cpu, memory, swap locally, skew
-   from peer flash timestamps.
-3. `internal/notify` with deterministic hash election.
-4. The YAML config file and per-OS default paths.
-5. Binary flash encoding once observation counts grow.
+3. The YAML config file and per-OS default paths.
+4. Windows probes for the resource checks.
+5. Binary flash encoding once observation counts grow. Skew and the resource
+   checks added observations per lantern, so this is closer than it was.

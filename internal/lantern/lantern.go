@@ -29,6 +29,9 @@ type Config struct {
 	MaxAge time.Duration
 	// Checks are the checks this lantern runs locally.
 	Checks []check.Check
+	// SkewMax is the clock drift against a peer that trips the skew check.
+	// Zero or negative disables skew measurement.
+	SkewMax time.Duration
 	// Logger receives operator-facing log lines. Nil silences the lantern.
 	Logger *log.Logger
 }
@@ -38,12 +41,15 @@ type Lantern struct {
 	id       string
 	interval time.Duration
 	maxAge   time.Duration
+	skewMax  time.Duration
 	checks   []check.Check
 	log      *log.Logger
 
-	mu    sync.Mutex
-	store map[string]quorum.Observation
-	sw    *swarm.Swarm
+	mu       sync.Mutex
+	store    map[string]quorum.Observation
+	clocks   map[string]*peerClock
+	lastSeen map[string]time.Time
+	sw       *swarm.Swarm
 }
 
 // New builds a lantern. Attach a swarm and call Run to light it.
@@ -64,9 +70,12 @@ func New(cfg Config) *Lantern {
 		id:       cfg.ID,
 		interval: interval,
 		maxAge:   maxAge,
+		skewMax:  cfg.SkewMax,
 		checks:   cfg.Checks,
 		log:      logger,
 		store:    make(map[string]quorum.Observation),
+		clocks:   make(map[string]*peerClock),
+		lastSeen: make(map[string]time.Time),
 	}
 }
 
@@ -116,6 +125,7 @@ func (l *Lantern) flash(ctx context.Context) {
 	}
 
 	l.mu.Lock()
+	own = append(own, l.skewObservations(now)...)
 	for _, o := range own {
 		l.store[storeKey(o)] = o
 	}
@@ -143,6 +153,7 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 		l.log.Printf("dropped a flash that did not parse: %v", err)
 		return
 	}
+	now := time.Now().UTC()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, o := range obs {
@@ -152,6 +163,12 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 		key := storeKey(o)
 		if prev, ok := l.store[key]; !ok || o.Seen.After(prev.Seen) {
 			l.store[key] = o
+		}
+		// A flash stamped later than anything heard from this observer is a
+		// fresh clock sample; re-gossiped old flashes are not.
+		if l.skewMax > 0 && o.Seen.After(l.lastSeen[o.Observer]) {
+			l.lastSeen[o.Observer] = o.Seen
+			l.observeClock(o.Observer, o.Seen, now)
 		}
 	}
 }

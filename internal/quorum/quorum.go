@@ -24,6 +24,9 @@ type Decision struct {
 	Check  string `json:"check"`
 	// Down is true when quorum agrees the subject is broken.
 	Down bool `json:"down"`
+	// Authority is true when the subject is a lantern's own local check, so
+	// that lantern's word decided alone and no agreement was needed.
+	Authority bool `json:"authority,omitempty"`
 	// Votes counts lanterns currently reporting the subject broken.
 	Votes int `json:"votes"`
 	// Voters counts lanterns with a live observation on the subject.
@@ -41,6 +44,11 @@ type Decision struct {
 //
 // Only the newest observation per observer counts, and observations older
 // than maxAge are ignored entirely (zero maxAge disables the age cut).
+//
+// One exception, and it is rule 4: an observation whose observer is the
+// target itself is a lantern reporting on its own local checks. That lantern
+// is the sole authority on those, so its word decides alone and hearsay
+// about the same subject never mixes with it.
 func Decide(target, checkName string, obs []Observation, lastKnownSize int, maxAge time.Duration, now time.Time) Decision {
 	d := Decision{
 		Target:    target,
@@ -60,6 +68,17 @@ func Decide(target, checkName string, obs []Observation, lastKnownSize int, maxA
 		if prev, ok := newest[o.Observer]; !ok || o.Seen.After(prev.Seen) {
 			newest[o.Observer] = o
 		}
+	}
+
+	if auth, ok := newest[target]; ok {
+		d.Authority = true
+		d.Voters = 1
+		d.Needed = 1
+		if !auth.Healthy {
+			d.Votes = 1
+		}
+		d.Down = !auth.Healthy
+		return d
 	}
 
 	for _, o := range newest {

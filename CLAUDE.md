@@ -12,7 +12,8 @@ Named after *Photinus carolinus*, the firefly that flashes in unison with nothin
 coordinating it. Every design decision should be checkable against that: **is this thing
 still true if any single node disappears?** If the answer is no, it is wrong.
 
-Status: pre-alpha. First milestone in progress. We are building the first lantern.
+Status: pre-alpha. The mesh works: lanterns gossip, agree, and run all seven
+check types. No notification yet, no config file.
 
 ## Vocabulary (use these words in code, comments, docs, CLI, and commit messages)
 
@@ -82,11 +83,12 @@ is broken.
 ## Checks (built-in types)
 
 Every check is threshold-based: it produces an observation that is OK or not-OK, never a
-stored number over time. Planned built-in checks:
+stored number over time. All built-in checks exist; Windows probes for the local ones are
+still on the roadmap (they report "not applicable" there until then).
 
 | Check | What it tests | Kind |
 |---|---|---|
-| **tcp** | dial a `host:port` (the first and only one in the current milestone) | remote |
+| **tcp** | dial a `host:port` | remote |
 | **uptime** | host uptime, flags a reboot since the last flash | local |
 | **disk** | filesystem usage percent against a threshold | local |
 | **cpu** | CPU utilization percent (short rolling average) against a threshold | local |
@@ -96,9 +98,13 @@ stored number over time. Planned built-in checks:
 
 Resource checks (`uptime`, `disk`, `cpu`, `memory`, `swap`) are *local* facts: rule 4
 applies, a lantern is the sole authority on its own resource checks and gossips them as
-observations. `skew` is different: it is computed from the timestamps on peer flashes, so
-it is inherently about the mesh rather than any single host. It is also the most on-brand
-thing photinus can measure, since the whole project is named after synchronized flashing.
+observations. In code that means their observations target the lantern's own ID, and
+quorum treats observer-equals-target as authoritative: the host's own word decides, no
+agreement needed, hearsay never mixes in. `skew` is different: it is computed from the
+timestamps on peer flashes, so it is inherently about the mesh rather than any single
+host (which is also why it lives in `internal/lantern`, not `internal/check`). It is the
+most on-brand thing photinus can measure, since the whole project is named after
+synchronized flashing.
 
 ## Rules that are not negotiable
 
@@ -168,18 +174,19 @@ gofmt -l .                    # must print nothing
 
 ## Current milestone
 
-Get two lanterns on one machine to see each other and agree that a third, fake host is
-down. That is the smallest thing that proves the whole idea. Everything else waits.
+A swarm that pages you exactly once. `internal/notify` with the deterministic
+hash election from the hard-problems section: when quorum convicts a subject,
+the alive lantern whose ID hashes closest to the alert sends the one
+notification, and nobody else does. Start with a single outbound channel
+(exec a command with the alert as arguments is enough to prove it), and test
+the degraded case where the elected lantern is the dead one.
 
-Concretely:
+Done so far: the mesh (two lanterns agree a fake host is down, verified), all
+seven check types, the authority rule for local checks, skew from flash
+timestamps. The history is in docs/design.md.
 
-1. `internal/swarm`: wrap memberlist, join by seed list, expose the live peer set.
-2. `internal/check`: one check type only, a TCP dial. Nothing else yet.
-3. `internal/lantern`: the loop, gossiping observations over memberlist's delegate.
-4. `internal/quorum`: agreement over observations, with the last-known-size rule.
-5. `cmd/photinus`: `run` and `status`.
-
-No notification, no config file, no second check type until those five talk to each other.
+No YAML config and no second notification channel until one alert reliably
+arrives exactly once.
 
 ## Repo layout beyond the code
 

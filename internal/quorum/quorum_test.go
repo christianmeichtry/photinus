@@ -114,6 +114,9 @@ func TestDecide(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Decide("db:5432", "tcp", tt.obs, tt.lastKnownSize, maxAge, now)
+			if got.Authority {
+				t.Errorf("Authority = true for a remote subject, want false")
+			}
 			if got.Down != tt.wantDown {
 				t.Errorf("Down = %v, want %v", got.Down, tt.wantDown)
 			}
@@ -122,6 +125,68 @@ func TestDecide(t *testing.T) {
 			}
 			if got.Voters != tt.wantVoters {
 				t.Errorf("Voters = %d, want %d", got.Voters, tt.wantVoters)
+			}
+			if got.Needed != tt.wantNeeded {
+				t.Errorf("Needed = %d, want %d", got.Needed, tt.wantNeeded)
+			}
+		})
+	}
+}
+
+func TestDecideAuthority(t *testing.T) {
+	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	maxAge := 30 * time.Second
+
+	// Local subject: lantern l1 reporting on its own disk. Target is l1.
+	own := func(healthy bool, age time.Duration) Observation {
+		return Observation{Observer: "l1", Target: "l1", Check: "disk:/", Healthy: healthy, Seen: now.Add(-age)}
+	}
+	hearsay := func(observer string, healthy bool, age time.Duration) Observation {
+		return Observation{Observer: observer, Target: "l1", Check: "disk:/", Healthy: healthy, Seen: now.Add(-age)}
+	}
+
+	tests := []struct {
+		name          string
+		obs           []Observation
+		lastKnownSize int
+		wantDown      bool
+		wantAuthority bool
+		wantNeeded    int
+	}{
+		{
+			name:          "the host's own word is enough, even in a big swarm",
+			obs:           []Observation{own(false, time.Second)},
+			lastKnownSize: 13,
+			wantDown:      true,
+			wantAuthority: true,
+			wantNeeded:    1,
+		},
+		{
+			name:          "hearsay never overrules the authority",
+			obs:           []Observation{own(true, time.Second), hearsay("l2", false, time.Second), hearsay("l3", false, time.Second)},
+			lastKnownSize: 3,
+			wantDown:      false,
+			wantAuthority: true,
+			wantNeeded:    1,
+		},
+		{
+			name:          "a stale authority falls back to ordinary quorum",
+			obs:           []Observation{own(false, 5*time.Minute), hearsay("l2", false, time.Second)},
+			lastKnownSize: 3,
+			wantDown:      false,
+			wantAuthority: false,
+			wantNeeded:    2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Decide("l1", "disk:/", tt.obs, tt.lastKnownSize, maxAge, now)
+			if got.Down != tt.wantDown {
+				t.Errorf("Down = %v, want %v", got.Down, tt.wantDown)
+			}
+			if got.Authority != tt.wantAuthority {
+				t.Errorf("Authority = %v, want %v", got.Authority, tt.wantAuthority)
 			}
 			if got.Needed != tt.wantNeeded {
 				t.Errorf("Needed = %d, want %d", got.Needed, tt.wantNeeded)

@@ -71,6 +71,13 @@ Leaning towards both.
 *Settled: the last-known-size rule is implemented and tested against the 7/6
 split. Alerting on the partition itself is still open.*
 
+*Also settled: membership was discovered (seen-alive) only, so a box that
+was down when the swarm started, or when the whole fleet was restarted, was
+invisible rather than shown down. `-expect <name>` now declares members
+that must exist: they seed the roster at startup, count toward quorum, and
+are reported down until they join. A declared member survives a graceful
+farewell too. Same list on every box, like the seeds.*
+
 ### Notification
 
 The mesh agrees that something is wrong. Now what? Someone has to actually send the email

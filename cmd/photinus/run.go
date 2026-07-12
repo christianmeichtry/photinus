@@ -45,8 +45,9 @@ func runCmd(args []string) error {
 	panel := fs.String("panel", "", "also serve the read-only web status panel on this extra address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
 	panelToken := fs.String("panel-token", os.Getenv("PHOTINUS_PANEL_TOKEN"), "bearer token guarding status data; when set, the gossip port also answers the panel and /status.json (app and browser reach the swarm through the one open port). Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_PANEL_TOKEN")
 	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime) without naming them")
-	var seeds, watches stringList
+	var seeds, watches, expect stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
+	fs.Var(&expect, "expect", "name of a lantern that must exist; a declared box that is down or never joins is reported down instead of vanishing (repeatable, same list on every box)")
 	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration]; naming a default check overrides it")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -118,6 +119,7 @@ func runCmd(args []string) error {
 		Seeds:     seeds,
 		Advertise: *advertise,
 		Key:       *key,
+		Expect:    expect,
 		HTTP:      muxHTTP,
 		OnFlash:   lan.ReceiveFlash,
 		Logger:    logger,

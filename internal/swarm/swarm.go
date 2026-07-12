@@ -42,6 +42,12 @@ type Config struct {
 	// lanterns without the same key cannot join or inject anything. The
 	// actual cipher key is derived from it, so any passphrase works.
 	Key string
+	// Expect names lanterns that must exist whether or not they are alive.
+	// A declared lantern that is down at startup, or that dies while the
+	// swarm is restarted, is still counted and reported down, instead of
+	// being invisible because membership is only ever discovered. Same list
+	// on every box, like the seeds.
+	Expect []string
 	// HTTP, when set, is served on the gossip port itself: the mux sniffs
 	// each TCP connection and routes memberlist traffic to memberlist and
 	// HTTP to this handler. One open port serves both. Nil leaves the
@@ -63,6 +69,7 @@ type Swarm struct {
 	mu       sync.Mutex
 	onFlash  func([]byte)
 	everSeen map[string]struct{}
+	expected map[string]struct{}
 
 	stop chan struct{}
 }
@@ -89,7 +96,16 @@ func Join(cfg Config) (*Swarm, error) {
 		log:      logger,
 		onFlash:  cfg.OnFlash,
 		everSeen: map[string]struct{}{cfg.ID: {}},
+		expected: make(map[string]struct{}),
 		stop:     make(chan struct{}),
+	}
+	// Declared members exist from the start: seed them into the roster so a
+	// box that never joins is counted and reported down, not invisible.
+	for _, name := range cfg.Expect {
+		if name != "" {
+			s.everSeen[name] = struct{}{}
+			s.expected[name] = struct{}{}
+		}
 	}
 
 	mc := memberlist.DefaultLANConfig()
@@ -261,7 +277,9 @@ func (s *Swarm) MemberVersions() map[string]string {
 // counted, which keeps a minority partition quiet.
 func (s *Swarm) Forget(name string) {
 	s.mu.Lock()
-	delete(s.everSeen, name)
+	if _, declared := s.expected[name]; !declared {
+		delete(s.everSeen, name)
+	}
 	s.mu.Unlock()
 }
 
@@ -376,9 +394,16 @@ func (e *events) NotifyLeave(n *memberlist.Node) {
 	// partition quiet instead of screaming.
 	if n.State == memberlist.StateLeft {
 		e.s.mu.Lock()
-		delete(e.s.everSeen, n.Name)
+		_, declared := e.s.expected[n.Name]
+		if !declared {
+			delete(e.s.everSeen, n.Name)
+		}
 		e.s.mu.Unlock()
-		e.s.log.Printf("lantern %s left the swarm gracefully and is forgotten", n.Name)
+		if declared {
+			e.s.log.Printf("lantern %s left gracefully but is a declared member, kept and reported down", n.Name)
+		} else {
+			e.s.log.Printf("lantern %s left the swarm gracefully and is forgotten", n.Name)
+		}
 		return
 	}
 	e.s.log.Printf("lantern %s stopped answering", n.Name)

@@ -393,10 +393,13 @@ async function tick(){
     try{
       const st = await fetchDoor(origin);
       activeDoor = origin;
-      // Learn every peer's door for next time.
+      // Learn every peer's raw door for next time. Lanterns speak plain
+      // http on the gossip port, so a browser served over https cannot use
+      // these (mixed content) and usableDoors filters them out; the native
+      // app has no such limit. A browser's failover doors are other https
+      // panels the operator adds by hand.
       if (st.endpoints){
-        const scheme = origin.startsWith("https:") ? "https://" : "http://";
-        const learned = Object.values(st.endpoints).map(hp => scheme + hp);
+        const learned = Object.values(st.endpoints).map(hp => "http://" + hp);
         saveDoors([...loadDoors(), ...learned]);
       }
       render(st);

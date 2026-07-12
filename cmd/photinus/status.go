@@ -160,6 +160,11 @@ func printTable(st lantern.Status, verbose bool) {
 			state, color = "DOWN", c.down
 		case s.State == quorum.StateWarn:
 			state, color = "WARN", c.warn
+		case s.Votes > 0:
+			// Accused but short of quorum. One lantern's opinion is not
+			// an outage, but pairing a green up with an accusation would
+			// contradict the detail column.
+			state, color = "sus", c.warn
 		}
 		fmt.Printf("%s%-6s%s %-*s %-*s %-*s %s\n",
 			color, state, c.reset, checkW, s.Check, targetW, s.Target, agreeW, agreement(s.Decision), s.Detail)
@@ -179,7 +184,7 @@ func agreement(d quorum.Decision) string {
 	if d.Authority {
 		return "own report"
 	}
-	if d.State != quorum.StateUp {
+	if d.State != quorum.StateUp || d.Votes > 0 {
 		return fmt.Sprintf("%d/%d, quorum %d", d.Votes, d.Voters, d.Needed)
 	}
 	return fmt.Sprintf("%d lantern%s", d.Voters, plural(d.Voters))

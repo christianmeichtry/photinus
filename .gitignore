@@ -1,0 +1,14 @@
+# Compiled binary
+/photinus
+/cmd/photinus/photinus
+
+# Test and coverage output
+*.test
+*.out
+coverage.*
+
+# Editor and OS cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/

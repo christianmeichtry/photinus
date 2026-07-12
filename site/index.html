@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>photinus, mesh monitoring with no center</title>
+<meta name="description" content="photinus is decentralized mesh monitoring. Every host runs a lantern; the lanterns watch each other and alert only when the swarm agrees.">
+<style>
+  :root {
+    --bg: #0b0f14;
+    --ink: #d8e0e8;
+    --dim: #8494a4;
+    --glow: #ffd257;
+    --line: #1c2632;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 17px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 4rem 1.25rem;
+  }
+  main { max-width: 40rem; }
+  .lantern {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--glow);
+    display: inline-block;
+    margin-right: .6rem;
+    box-shadow: 0 0 18px 4px rgba(255, 210, 87, .45);
+    animation: flash 2.4s ease-in-out infinite;
+  }
+  @keyframes flash {
+    0%, 100% { opacity: .25; box-shadow: 0 0 4px 1px rgba(255, 210, 87, .15); }
+    50%      { opacity: 1;   box-shadow: 0 0 18px 5px rgba(255, 210, 87, .5); }
+  }
+  h1 {
+    font-size: 2.1rem;
+    font-weight: 650;
+    letter-spacing: -.02em;
+    margin-bottom: .4rem;
+  }
+  .tagline { color: var(--dim); margin-bottom: 2.2rem; }
+  p { margin-bottom: 1.1rem; }
+  em { color: var(--glow); font-style: normal; }
+  h2 {
+    font-size: 1.05rem;
+    font-weight: 650;
+    margin: 2rem 0 .6rem;
+    color: var(--ink);
+  }
+  ul { list-style: none; }
+  li { padding-left: 1.4rem; position: relative; margin-bottom: .55rem; color: var(--dim); }
+  li::before { content: "\2022"; color: var(--glow); position: absolute; left: .3rem; }
+  li strong { color: var(--ink); font-weight: 600; }
+  pre {
+    background: #06090d;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font: 14px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--ink);
+    margin: 1.2rem 0;
+  }
+  pre .c { color: var(--dim); }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    color: var(--dim);
+    font-size: .85rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1><span class="lantern"></span>photinus</h1>
+  <p class="tagline">Mesh monitoring with no center.</p>
+
+  <p>Every host runs a <em>lantern</em>. The lanterns watch each other, gossip
+  what they see, and alert only when enough of the <em>swarm</em> agrees.
+  There is no central collector, no dashboard host, and nothing whose failure
+  makes the monitoring blind.</p>
+
+  <p>Named after <em>Photinus carolinus</em>, the firefly that flashes in
+  unison with nothing coordinating it.</p>
+
+  <h2>How it holds together</h2>
+  <ul>
+    <li><strong>No single point of failure.</strong> No primary, no
+    coordinator, no seed that matters after startup. Any lantern can vanish
+    and the swarm keeps watching.</li>
+    <li><strong>Alerts fire on agreement, not opinion.</strong> One lantern
+    seeing a host down is a fact about that lantern. Quorum is what makes it
+    an outage.</li>
+    <li><strong>Partitions go quiet, not loud.</strong> Quorum counts against
+    the swarm as last known, so a cut-off minority cannot page you about the
+    majority it lost.</li>
+    <li><strong>Status is always local.</strong> Ask any lantern what the
+    swarm sees; it answers from its own memory, even with the network on
+    fire.</li>
+    <li><strong>One static binary.</strong> Drop it on the host and run it.
+    No runtime, no dependencies, small boxes welcome.</li>
+  </ul>
+
+  <h2>What it looks like</h2>
+  <pre><span class="c"># on every host</span>
+photinus run -seed lantern-a:7946 -watch tcp:db:5432
+
+<span class="c"># on any host, any time</span>
+photinus status
+
+tcp   db:5432   DOWN  (5 of 7 lanterns agree, quorum is 4)</pre>
+
+  <p>Pre-alpha. The first lanterns are being built in the open.</p>
+
+  <footer>photinus is not a metrics store, not agentless, and not for a
+  single server. It answers one question: is it broken right now, and does
+  the swarm agree.</footer>
+</main>
+</body>
+</html>

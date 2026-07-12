@@ -7,8 +7,18 @@
 *.out
 coverage.*
 
-# Editor and OS cruft
+# build
+dist/
+build/
+
+# env
+.env
+.env.*
+!.env.example
+
+# os / editor
 .DS_Store
-*.swp
+Thumbs.db
 .idea/
 .vscode/
+*.swp

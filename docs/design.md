@@ -1,11 +1,112 @@
 # photinus design notes
 
-This is the thinking behind the code. When a design decision gets made in
-code, it gets written down here. The brief and the non-negotiable rules live
-in `CLAUDE.md`; this file records how the code currently honors them and what
-was consciously deferred.
+Two parts. Part one is the original thinking, kept because it explains why the
+design looks the way it does, annotated where the code has since settled a
+question. Part two is the decision log: what actually got built and the
+reasoning that survived contact with the implementation. The brief and the
+non-negotiable rules live in `CLAUDE.md`.
 
-## Decisions made in the first milestone
+## Part one: the thinking
+
+### What a lantern does
+
+Each host runs one lantern process. It:
+
+1. Checks the things it is told to check (local: disk, load, memory, systemd units,
+   certificates. Remote: TCP connect, HTTP status, whatever else).
+2. Probes a handful of peers, not all of them. Fan-out is a constant, not N.
+3. Gossips a compact view of what it believes to every peer it talks to.
+4. Merges the views it receives.
+
+Nothing is centralized. Every lantern can answer "what is the state of the swarm" from
+local memory, which means `photinus status` works from any host, including during an
+outage that has taken out half the fleet.
+
+*Settled: this is what got built. Local checks so far are disk, cpu, memory,
+swap, and uptime; systemd units and certificates are still to come.*
+
+### Membership
+
+Probably SWIM (Scalable Weakly-consistent Infection-style Membership), or a close variant.
+It is the well-trodden path here: Serf and Consul both use it, the failure detector is
+sound, and the false-positive handling (indirect probes before declaring a peer suspect)
+is exactly the property that makes quorum alerting meaningful.
+
+Not inventing a membership protocol. That is a solved problem and inventing one is how
+this project would die.
+
+*Settled: `hashicorp/memberlist`, wrapped thin in `internal/swarm`.*
+
+### State merging
+
+Each host's status is a versioned record. Merge is last-write-wins on a per-host lamport
+counter, with the host itself as the authority on its own local checks. Observations
+*about* a host by other hosts are kept separately and aggregated, since that is where
+quorum lives.
+
+Open question: how much history does a lantern keep? Enough to answer "when did this
+start" without a database is the goal, but that trades against memory on small VPSes.
+
+*Settled, with one deviation: merge is newest-wins on wall-clock timestamps
+rather than lamport counters, and the skew check exists precisely to guard
+those clocks. The authority split became the authority rule in
+`internal/quorum`. The history question is still open; today a lantern keeps
+only the newest observation per subject.*
+
+### Quorum alerting
+
+An alert has a required agreement threshold. Default: more than half the reachable swarm.
+
+The interesting failure case is a network partition. If the swarm splits 7/6, both halves
+believe the other half is down, and both may have quorum by their own count. Options:
+
+- Require an absolute majority of the *last known* swarm size, not the reachable one.
+  A minority partition then goes quiet rather than screaming. This is the Raft instinct
+  and is probably right.
+- Alert on the partition itself as a distinct event, which is arguably the most useful
+  thing you could tell an operator anyway.
+
+Leaning towards both.
+
+*Settled: the last-known-size rule is implemented and tested against the 7/6
+split. Alerting on the partition itself is still open.*
+
+### Notification
+
+The mesh agrees that something is wrong. Now what? Someone has to actually send the email
+or the webhook, and if every lantern sends it you get 14 pages for one outage.
+
+Cheapest correct answer: deterministic election by hash. The alert has an ID. The lantern
+whose node ID is closest to `hash(alert_id)` and is alive sends it. No election protocol,
+no leader, and it degrades correctly when that lantern is the one that is down (next
+closest takes it).
+
+*Settled: implemented as rendezvous hashing in `internal/notify`, including
+the takeover when the elected sender dies mid-outage.*
+
+### Non-goals
+
+- Not a metrics store. No time series, no Grafana replacement. If you want graphs of CPU
+  over six months, use Prometheus. This tool answers "is it up, and does the fleet agree".
+- Not agentless. The whole design depends on peers watching peers.
+- Not for one server. With N=1 there is no mesh and no quorum, and you should use a cron
+  job and a curl.
+
+### Open questions from the start, and where they landed
+
+- Transport: gRPC, or raw UDP with a hand-rolled framing? UDP is what SWIM wants.
+  *Settled: memberlist's own UDP gossip with TCP fallback carries everything.*
+- Language: Go is the obvious fit (Serf's memberlist is right there, static binary, good
+  concurrency story). Rust if the memory footprint on small hosts matters more.
+  *Settled: Go.*
+- Config: file, or gossiped through the mesh itself? The second is elegant and dangerous.
+  *Settled: a file. Gossiped config makes the mesh a write channel into every
+  host, which is a different threat model than reading each other's health.*
+- How do you bootstrap? A seed list is boring and works. mDNS for LAN is nicer.
+  *Settled for now: a seed list, retried in the background, where no seed
+  matters after startup. mDNS remains a nice later idea.*
+
+## Part two: decisions made in code
 
 ### Membership is memberlist, nothing more
 
@@ -175,7 +276,7 @@ minority cannot reach quorum at all (the last-known-size rule), so it also
 cannot page. Exactly-once is therefore per connected majority, which is the
 strongest claim a coordinator-free design can honestly make.
 
-## Verified behavior (the milestone)
+## Verified behavior
 
 Two lanterns on one machine, seeded at each other, both watching a TCP port
 with nothing listening:
@@ -187,6 +288,17 @@ with nothing listening:
 - after the dead lantern's observations age out, the survivor's single vote
   cannot reach a quorum of 2 and the alert clears: a minority goes quiet.
 
+Three lanterns with `-notify` watching the same dead port:
+
+- exactly one page fires, from the lantern every log independently names as
+  the winner,
+- bringing the port up produces exactly one recovered page,
+- killing the elected sender mid-outage produces exactly one takeover page
+  from the next winner.
+
+Encrypted swarms: two lanterns sharing a key form a swarm; a third with the
+wrong key is refused with a plain reason in its log.
+
 ## Open problems, in rough order of next
 
 1. The YAML config file and per-OS default paths; the flag list has grown
@@ -197,3 +309,5 @@ with nothing listening:
 4. Binary flash encoding once observation counts grow. Skew and the resource
    checks added observations per lantern, so this is closer than it was.
 5. More notification channels as additional Senders, mail first.
+6. How much history a lantern keeps, so status can answer "when did this
+   start" without becoming a database.

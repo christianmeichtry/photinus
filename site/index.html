@@ -1,125 +1,443 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>photinus, mesh monitoring with no center</title>
-<meta name="description" content="photinus is decentralized mesh monitoring. Every host runs a lantern; the lanterns watch each other and alert only when the swarm agrees.">
+<title>photinus // decentralized mesh monitoring</title>
+<meta name="description" content="Decentralized mesh monitoring for servers. Every node watches. No node is in charge.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23FFC24B'/%3E%3C/svg%3E">
+
+<meta property="og:title" content="photinus">
+<meta property="og:description" content="Decentralized mesh monitoring for servers. Fireflies flash in unison. Nobody conducts.">
+<meta property="og:url" content="https://photinus.dev">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+
 <style>
-  :root {
-    --bg: #0b0f14;
-    --ink: #d8e0e8;
-    --dim: #8494a4;
-    --glow: #ffd257;
-    --line: #1c2632;
+  :root{
+    --dusk:#0B1F24;
+    --lantern:#FFC24B;
+    --lantern-hot:#FFF0C4;
+    --moss:#7FA893;
+    --parchment:#E8E2D2;
+    --ember:#C7563C;
+
+    --rule:rgba(232,226,210,.14);
+    --gutter:clamp(1.5rem,5vw,3.5rem);
+    --display:"Fraunces",Georgia,serif;
+    --sans:"IBM Plex Sans",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: var(--bg);
-    color: var(--ink);
-    font: 17px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex;
-    justify-content: center;
-    padding: 4rem 1.25rem;
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  html{-webkit-text-size-adjust:100%}
+
+  body{
+    background:var(--dusk);
+    color:var(--parchment);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
   }
-  main { max-width: 40rem; }
-  .lantern {
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: var(--glow);
-    display: inline-block;
-    margin-right: .6rem;
-    box-shadow: 0 0 18px 4px rgba(255, 210, 87, .45);
-    animation: flash 2.4s ease-in-out infinite;
+
+  .wrap{max-width:64rem;margin:0 auto;padding:0 var(--gutter)}
+
+  /* ---------- hero ---------- */
+
+  .hero{position:relative;min-height:100svh;display:flex;flex-direction:column;overflow:hidden}
+
+  #field{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  .hero-veil{
+    position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 80% at 22% 55%, rgba(11,31,36,.86) 0%, rgba(11,31,36,.55) 42%, rgba(11,31,36,0) 78%);
   }
-  @keyframes flash {
-    0%, 100% { opacity: .25; box-shadow: 0 0 4px 1px rgba(255, 210, 87, .15); }
-    50%      { opacity: 1;   box-shadow: 0 0 18px 5px rgba(255, 210, 87, .5); }
+
+  .hero-inner{
+    position:relative;flex:1;display:flex;flex-direction:column;justify-content:space-between;
+    padding:clamp(2rem,4vh,3.25rem) 0 clamp(2.25rem,4vh,3.25rem);pointer-events:none;
   }
-  h1 {
-    font-size: 2.1rem;
-    font-weight: 650;
-    letter-spacing: -.02em;
-    margin-bottom: .4rem;
+  .hero-inner a,.hero-inner button{pointer-events:auto}
+
+  .brand{
+    font-family:var(--mono);font-size:.8rem;letter-spacing:.14em;text-transform:lowercase;
+    color:var(--lantern);
   }
-  .tagline { color: var(--dim); margin-bottom: 2.2rem; }
-  p { margin-bottom: 1.1rem; }
-  em { color: var(--glow); font-style: normal; }
-  h2 {
-    font-size: 1.05rem;
-    font-weight: 650;
-    margin: 2rem 0 .6rem;
-    color: var(--ink);
+  .brand::before{content:"● ";font-size:.6em;vertical-align:.25em}
+
+  .lede{max-width:34rem;padding:3rem 0}
+
+  .lede h1{
+    font-family:var(--display);
+    font-variation-settings:"SOFT" 40,"WONK" 1,"opsz" 90;
+    font-weight:400;
+    font-size:clamp(2.3rem,6.2vw,4.15rem);
+    line-height:1.04;
+    letter-spacing:-.015em;
+    text-wrap:balance;
   }
-  ul { list-style: none; }
-  li { padding-left: 1.4rem; position: relative; margin-bottom: .55rem; color: var(--dim); }
-  li::before { content: "\2022"; color: var(--glow); position: absolute; left: .3rem; }
-  li strong { color: var(--ink); font-weight: 600; }
-  pre {
-    background: #06090d;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 1rem 1.2rem;
-    overflow-x: auto;
-    font: 14px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
-    color: var(--ink);
-    margin: 1.2rem 0;
+  .lede h1 em{font-style:normal;color:var(--lantern)}
+
+  .lede p{
+    margin-top:1.5rem;
+    font-family:var(--mono);
+    font-size:clamp(.82rem,1.6vw,.95rem);
+    line-height:1.7;
+    color:var(--moss);
+    max-width:28rem;
   }
-  pre .c { color: var(--dim); }
-  footer {
-    margin-top: 3rem;
-    padding-top: 1.2rem;
-    border-top: 1px solid var(--line);
-    color: var(--dim);
-    font-size: .85rem;
+
+  /* ---------- readout ---------- */
+
+  .readout{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem 1.5rem;font-family:var(--mono);font-size:.75rem}
+
+  .stats{display:flex;flex-wrap:wrap;gap:1.25rem;color:var(--moss);letter-spacing:.03em}
+  .stats b{font-weight:500;color:var(--parchment)}
+  .stats .ok{color:var(--lantern)}
+  .stats .lost{color:var(--ember)}
+
+  .controls{display:flex;gap:.5rem;margin-left:auto}
+
+  .controls button{
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;
+    color:var(--parchment);background:transparent;
+    border:1px solid var(--rule);border-radius:2px;
+    padding:.45rem .7rem;cursor:pointer;
+    transition:border-color .18s,color .18s;
+  }
+  .controls button:hover{border-color:var(--lantern);color:var(--lantern)}
+  .controls button:focus-visible{outline:2px solid var(--lantern);outline-offset:2px}
+
+  .hint{font-family:var(--mono);font-size:.72rem;color:var(--moss);opacity:.75;flex-basis:100%}
+
+  /* ---------- properties ---------- */
+
+  .props{padding:6rem 0 1rem}
+
+  .prop{
+    display:grid;grid-template-columns:9rem 1fr;gap:2rem;
+    padding:2.25rem 0;border-top:1px solid var(--rule);
+  }
+  .prop:last-child{border-bottom:1px solid var(--rule)}
+
+  .prop dt{
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--lantern);padding-top:.35rem;
+  }
+  .prop dd{font-size:1.05rem;max-width:38rem;color:var(--parchment)}
+
+  /* ---------- contact ---------- */
+
+  .contact{padding:6rem 0 5rem;max-width:38rem}
+
+  .contact h2{
+    font-family:var(--display);
+    font-variation-settings:"SOFT" 40,"WONK" 1,"opsz" 40;
+    font-weight:400;font-size:1.9rem;line-height:1.2;margin-bottom:1rem;
+  }
+  .contact p{color:var(--moss);margin-bottom:2rem}
+
+  .mail{
+    display:inline-block;font-family:var(--mono);font-size:1rem;
+    color:var(--lantern);text-decoration:none;
+    border-bottom:1px solid var(--rule);padding-bottom:.3rem;
+    transition:border-color .18s;
+  }
+  .mail:hover{border-bottom-color:var(--lantern)}
+  .mail:focus-visible{outline:2px solid var(--lantern);outline-offset:3px}
+
+  footer{
+    border-top:1px solid var(--rule);padding:2rem 0 3rem;
+    font-family:var(--mono);font-size:.72rem;color:var(--moss);
+    display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;justify-content:space-between;
+  }
+  footer a{color:var(--moss)}
+
+  @media (max-width:640px){
+    .prop{grid-template-columns:1fr;gap:.75rem;padding:1.75rem 0}
+    .controls{margin-left:0;width:100%}
+    .props{padding-top:4rem}
+    .contact{padding:4rem 0 3rem}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
   }
 </style>
 </head>
 <body>
+
 <main>
-  <h1><span class="lantern"></span>photinus</h1>
-  <p class="tagline">Mesh monitoring with no center.</p>
+  <section class="hero">
+    <canvas id="field" aria-hidden="true"></canvas>
+    <div class="hero-veil" aria-hidden="true"></div>
 
-  <p>Every host runs a <em>lantern</em>. The lanterns watch each other, gossip
-  what they see, and alert only when enough of the <em>swarm</em> agrees.
-  There is no central collector, no dashboard host, and nothing whose failure
-  makes the monitoring blind.</p>
+    <div class="hero-inner wrap">
+      <div class="brand">photinus</div>
 
-  <p>Named after <em>Photinus carolinus</em>, the firefly that flashes in
-  unison with nothing coordinating it.</p>
+      <div class="lede">
+        <h1>Fireflies flash in unison. <em>Nobody conducts.</em></h1>
+        <p>Decentralized mesh monitoring for servers. Every node watches. No node is in charge.</p>
+      </div>
 
-  <h2>How it holds together</h2>
-  <ul>
-    <li><strong>No single point of failure.</strong> No primary, no
-    coordinator, no seed that matters after startup. Any lantern can vanish
-    and the swarm keeps watching.</li>
-    <li><strong>Alerts fire on agreement, not opinion.</strong> One lantern
-    seeing a host down is a fact about that lantern. Quorum is what makes it
-    an outage.</li>
-    <li><strong>Partitions go quiet, not loud.</strong> Quorum counts against
-    the swarm as last known, so a cut-off minority cannot page you about the
-    majority it lost.</li>
-    <li><strong>Status is always local.</strong> Ask any lantern what the
-    swarm sees; it answers from its own memory, even with the network on
-    fire.</li>
-    <li><strong>One static binary.</strong> Drop it on the host and run it.
-    No runtime, no dependencies, small boxes welcome.</li>
-  </ul>
+      <div class="readout">
+        <div class="stats">
+          <span>sync <b id="r-sync">0.00</b></span>
+          <span><b id="r-alive">0</b>/<b id="r-total">0</b> lanterns</span>
+          <span id="r-quorum" class="ok">quorum ok</span>
+        </div>
+        <div class="controls">
+          <button id="btn-kill" type="button">kill a node</button>
+          <button id="btn-restore" type="button">restore all</button>
+        </div>
+        <p class="hint">Click any light to take that server down. The mesh keeps flashing.</p>
+      </div>
+    </div>
+  </section>
 
-  <h2>What it looks like</h2>
-  <pre><span class="c"># on every host</span>
-photinus run -seed lantern-a:7946 -watch tcp:db:5432
+  <section class="wrap">
+    <dl class="props">
+      <div class="prop">
+        <dt>Mesh</dt>
+        <dd>Every server watches every other server. There is no central collector to lose, and no dashboard host you have to keep alive in order to find out that something died.</dd>
+      </div>
+      <div class="prop">
+        <dt>Gossip</dt>
+        <dd>Nodes tell their neighbours what they see, and those neighbours tell theirs. State crosses the whole mesh in seconds without anyone coordinating it.</dd>
+      </div>
+      <div class="prop">
+        <dt>Quorum</dt>
+        <dd>An alert fires when the mesh agrees, not when one machine has an opinion. A single node losing sight of a host is data. Half of them losing sight of it is an outage.</dd>
+      </div>
+    </dl>
 
-<span class="c"># on any host, any time</span>
-photinus status
+    <section class="contact">
+      <h2>Not shipping yet.</h2>
+      <p>There is nothing to download and nothing to sign up for. If you run servers and this sounds like something you want, write to me and tell me what breaks in your current setup. That is what I am building against.</p>
+      <a class="mail" href="mailto:hello@photinus.dev?subject=photinus">hello@photinus.dev</a>
+    </section>
 
-tcp   db:5432   DOWN  (5 of 7 lanterns agree, quorum is 4)</pre>
-
-  <p>Pre-alpha. The first lanterns are being built in the open.</p>
-
-  <footer>photinus is not a metrics store, not agentless, and not for a
-  single server. It answers one question: is it broken right now, and does
-  the swarm agree.</footer>
+    <footer>
+      <span>photinus.dev</span>
+      <span>built in Sierre by <a href="https://atelier-agile.ch">atelier agile</a></span>
+    </footer>
+  </section>
 </main>
+
+<script>
+(function(){
+  const canvas = document.getElementById('field');
+  const ctx = canvas.getContext('2d');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const elSync   = document.getElementById('r-sync');
+  const elAlive  = document.getElementById('r-alive');
+  const elTotal  = document.getElementById('r-total');
+  const elQuorum = document.getElementById('r-quorum');
+
+  const COUNT    = 14;   // lanterns
+  const COUPLING = 0.08; // Mirollo-Strogatz epsilon: how hard a flash nudges the others
+  const REFRACT  = 0.35; // seconds a lantern stays deaf to its neighbours after flashing
+  const NEIGHBOURS = 3;  // gossip fan-out drawn as edges
+
+  let nodes = [], w = 0, h = 0, last = 0;
+
+  // deterministic PRNG so the constellation is composed, not random-looking
+  let seed = 20260712;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+
+  function build(){
+    seed = 20260712;
+    nodes = [];
+    const pad = Math.min(w, h) * 0.12;
+    const minDist = Math.min(w, h) * 0.13;
+    let guard = 0;
+
+    while (nodes.length < COUNT && guard++ < 4000){
+      const x = pad + rnd() * (w - pad * 2);
+      const y = pad + rnd() * (h - pad * 2);
+      if (nodes.every(n => Math.hypot(n.x - x, n.y - y) > minDist)){
+        nodes.push({
+          x, y,
+          phase: rnd(),                 // start out of sync
+          period: 2.0 + rnd() * 0.7,    // heterogeneous natural frequency
+          flash: 0,
+          refract: 0,
+          alive: true
+        });
+      }
+    }
+
+    // nearest-neighbour edges = the gossip graph
+    nodes.forEach(n => {
+      n.links = nodes
+        .filter(o => o !== n)
+        .sort((a, b) => Math.hypot(a.x - n.x, a.y - n.y) - Math.hypot(b.x - n.x, b.y - n.y))
+        .slice(0, NEIGHBOURS);
+    });
+
+    if (reduce) nodes.forEach(n => { n.phase = 0.5; n.flash = 0.35; });
+  }
+
+  function resize(){
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas.getBoundingClientRect();
+    w = rect.width; h = rect.height;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    build();
+    if (reduce) draw();
+  }
+
+  function fire(node){
+    node.phase = 0;
+    node.flash = 1;
+    node.refract = REFRACT; // just flashed, so deaf to neighbours for a moment
+    // a flash nudges every other listening lantern forward. this is the whole trick.
+    // lanterns still in their refractory window ignore it, which is what keeps a volley
+    // from re-exciting the lanterns that just fired and strobing forever.
+    for (const o of nodes){
+      if (o === node || !o.alive || o.refract > 0) continue;
+      o.phase = Math.min(0.995, o.phase + COUPLING);
+    }
+  }
+
+  function step(dt){
+    for (const n of nodes){
+      if (!n.alive) continue;
+      n.flash = Math.max(0, n.flash - dt * 1.7);
+      if (n.refract > 0){ n.refract -= dt; continue; } // still dark, still deaf
+      n.phase += dt / n.period;
+      if (n.phase >= 1) fire(n);
+    }
+  }
+
+  // Kuramoto order parameter: 1.0 means perfectly in step
+  function coherence(){
+    const live = nodes.filter(n => n.alive);
+    if (!live.length) return 0;
+    let sx = 0, sy = 0;
+    for (const n of live){
+      sx += Math.cos(n.phase * Math.PI * 2);
+      sy += Math.sin(n.phase * Math.PI * 2);
+    }
+    return Math.hypot(sx, sy) / live.length;
+  }
+
+  function draw(){
+    ctx.clearRect(0, 0, w, h);
+
+    // gossip edges, brightened by whichever end just fired
+    ctx.lineWidth = 1;
+    for (const n of nodes){
+      if (!n.alive) continue;
+      for (const o of n.links){
+        if (!o.alive) continue;
+        const heat = Math.max(n.flash, o.flash);
+        ctx.strokeStyle = 'rgba(127,168,147,' + (0.05 + heat * 0.28).toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.moveTo(n.x, n.y);
+        ctx.lineTo(o.x, o.y);
+        ctx.stroke();
+      }
+    }
+
+    for (const n of nodes){
+      if (!n.alive){
+        ctx.strokeStyle = 'rgba(232,226,210,.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 5, 0, Math.PI * 2);
+        ctx.stroke();
+        continue;
+      }
+
+      // charging glow, then the flash
+      const charge = 0.10 + Math.pow(n.phase, 3) * 0.30;
+      const bright = Math.min(1, charge + n.flash);
+      const radius = 22 + n.flash * 38;
+
+      const glow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, radius);
+      glow.addColorStop(0, 'rgba(255,194,75,' + (bright * 0.55).toFixed(3) + ')');
+      glow.addColorStop(1, 'rgba(255,194,75,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = n.flash > 0.45 ? '#FFF0C4' : '#FFC24B';
+      ctx.globalAlpha = 0.35 + bright * 0.65;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2.6 + n.flash * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function readout(){
+    const alive = nodes.filter(n => n.alive).length;
+    elSync.textContent  = coherence().toFixed(2);
+    elAlive.textContent = alive;
+    elTotal.textContent = nodes.length;
+
+    const ok = alive > nodes.length / 2;
+    elQuorum.textContent = ok ? 'quorum ok' : 'quorum lost';
+    elQuorum.className   = ok ? 'ok' : 'lost';
+  }
+
+  function loop(now){
+    const dt = Math.min((now - last) / 1000, 0.05); // clamp so a backgrounded tab does not jump
+    last = now;
+    step(dt);
+    draw();
+    readout();
+    requestAnimationFrame(loop);
+  }
+
+  canvas.addEventListener('click', e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    let hit = null, best = 26;
+    for (const n of nodes){
+      const d = Math.hypot(n.x - x, n.y - y);
+      if (d < best){ best = d; hit = n; }
+    }
+    if (hit){
+      hit.alive = !hit.alive;
+      hit.flash = 0;
+      hit.refract = 0;
+      if (reduce){ draw(); }
+      readout();
+    }
+  });
+
+  document.getElementById('btn-kill').addEventListener('click', () => {
+    const live = nodes.filter(n => n.alive);
+    if (!live.length) return;
+    const victim = live[Math.floor(Math.random() * live.length)];
+    victim.alive = false;
+    victim.flash = 0;
+    victim.refract = 0;
+    if (reduce) draw();
+    readout();
+  });
+
+  document.getElementById('btn-restore').addEventListener('click', () => {
+    nodes.forEach(n => { n.alive = true; n.refract = 0; });
+    if (reduce) draw();
+    readout();
+  });
+
+  window.addEventListener('resize', resize);
+  resize();
+  readout();
+
+  if (!reduce) requestAnimationFrame(t => { last = t; loop(t); });
+})();
+</script>
 </body>
 </html>

@@ -1,0 +1,10 @@
+photinus
+Copyright 2026 Christian Meichtry
+
+This product includes software developed at HashiCorp (now IBM):
+  github.com/hashicorp/memberlist, licensed under the
+  Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
+
+The MPL is a file-level copyleft licence. Source for the MPL-licensed
+components, including any modifications, is available from their
+respective upstream repositories.

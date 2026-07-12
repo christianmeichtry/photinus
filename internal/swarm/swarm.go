@@ -304,7 +304,7 @@ type delegate struct{ s *Swarm }
 // architectures apart. Additive changes only: consumers split on spaces
 // and ignore fields they do not know.
 func (d *delegate) NodeMeta(limit int) []byte {
-	v := version.Release + " " + runtime.GOOS + "/" + runtime.GOARCH
+	v := version.Release + " " + runtime.GOOS + "/" + runtime.GOARCH + " " + version.Distro()
 	if len(v) > limit {
 		v = v[:limit]
 	}

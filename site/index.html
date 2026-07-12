@@ -267,6 +267,8 @@
           period: 2.0 + rnd() * 0.7,    // heterogeneous natural frequency
           flash: 0,
           refract: 0,
+          vx: 0, vy: 0,
+          jit: rnd() * 6.283,           // personal wander phase
           alive: true
         });
       }
@@ -307,8 +309,33 @@
   }
 
   function step(dt){
+    const pad = Math.min(w, h) * 0.08;
     for (const n of nodes){
-      if (!n.alive) continue;
+      if (!n.alive){
+        // the dead fall out of the dance and lie where they land
+        const ground = h - pad * 0.6;
+        if (n.y < ground){
+          n.vy = (n.vy || 0) + 140 * dt;
+          n.y = Math.min(ground, n.y + n.vy * dt);
+        } else { n.vx = n.vy = 0; }
+        continue;
+      }
+      // insect flight: an occasional dart that glides out over a slow
+      // personal weave, so the constellation breathes without dissolving
+      n.jit += dt;
+      if (Math.random() < dt * 0.4){
+        const a = Math.random() * 6.283, sp = 8 + Math.random() * 16;
+        n.vx = Math.cos(a) * sp; n.vy = Math.sin(a) * sp;
+      }
+      const decay = Math.pow(0.35, dt);
+      n.vx *= decay; n.vy *= decay;
+      n.x += (n.vx + Math.sin(n.jit * 0.7) * 4) * dt;
+      n.y += (n.vy + Math.cos(n.jit * 0.55) * 4) * dt;
+      if (n.x < pad || n.x > w - pad) n.vx *= -1;
+      if (n.y < pad || n.y > h - pad) n.vy *= -1;
+      n.x = Math.max(pad, Math.min(w - pad, n.x));
+      n.y = Math.max(pad, Math.min(h - pad, n.y));
+
       n.flash = Math.max(0, n.flash - dt * 1.7);
       if (n.refract > 0){ n.refract -= dt; continue; } // still dark, still deaf
       n.phase += dt / n.period;

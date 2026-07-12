@@ -135,7 +135,11 @@ func runCmd(args []string) error {
 
 	var panelSrv *http.Server
 	if *panel != "" {
-		panelSrv, err = servePanel(*panel, *panelToken, lan)
+		// The -panel listener is meant to sit behind a reverse proxy that
+		// already authenticates (Caddy basic auth), or on loopback, so it
+		// stays token-free. The token guards only the gossip-port door,
+		// which is directly exposed.
+		panelSrv, err = servePanel(*panel, "", lan)
 		if err != nil {
 			statusSrv.Close()
 			sw.Leave()

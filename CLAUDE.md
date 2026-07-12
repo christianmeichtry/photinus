@@ -97,6 +97,8 @@ after a warning).
 | Check | What it tests | Kind |
 |---|---|---|
 | **tcp** | dial a `host:port` | remote |
+| **http** | fetch a url; 2xx/3xx is up, anything else is down | remote |
+| **cert** | TLS certificate health; broken or expired is down, expiring soon warns | remote |
 | **uptime** | host uptime, flags a reboot since the last flash | local |
 | **disk** | filesystem usage percent against a threshold | local |
 | **cpu** | CPU utilization percent (short rolling average) against a threshold | local |

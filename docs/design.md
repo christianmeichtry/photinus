@@ -277,6 +277,24 @@ gossips independently. Merging is per observation and does not care how
 they arrive. The binary encoding stays on the roadmap; chunking makes the
 current encoding safe rather than efficient.
 
+### Website checks: http and cert
+
+Both are remote checks like tcp, so quorum, notification, and status
+needed nothing new. The verdict mapping is deliberately strict for http:
+2xx and 3xx are up and everything else is down, including 4xx, because
+the operator watches a URL expecting it to work, and a 404 on that URL is
+a broken thing regardless of how alive the server process is. TLS
+verification stays on for the same reason: a certificate browsers reject
+means users cannot reach the site, and the check must not be more
+forgiving than the users are.
+
+The cert check is where warn against down earns its keep: broken,
+mis-hosted, or expired certificates are outages (browsers block on the
+spot), while a certificate inside the warning window (7 days by default,
+per-check overridable) warns days before the outage would happen. The
+expiry judgment is a pure function over the leaf certificate so the
+clock-dependent logic is table-tested without a network.
+
 ### Notification: hash election, no protocol
 
 Every lantern detects the same outages, so the problem is not sending a page

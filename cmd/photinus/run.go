@@ -45,7 +45,7 @@ func runCmd(args []string) error {
 	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime) without naming them")
 	var seeds, watches stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
-	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration]; naming a default check overrides it")
+	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration]; naming a default check overrides it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -150,6 +150,42 @@ func parseWatches(id string, watches []string) ([]check.Check, error) {
 				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, check.TCP{Addr: rest})
+		case "http", "https":
+			u := rest
+			switch {
+			case strings.HasPrefix(u, "//"):
+				// The flag was a bare url like https://example.com and
+				// the cut took its scheme.
+				u = kind + ":" + u
+			case !strings.Contains(u, "://"):
+				u = "https://" + u
+			}
+			if strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://") == "" {
+				return nil, fmt.Errorf("cannot watch %q: http needs a url", w)
+			}
+			checks = append(checks, check.HTTP{URL: u})
+		case "cert":
+			// cert:host, cert:host:port, cert:host:port:days. With one
+			// colon the number is a port, never a day count.
+			addr, days := rest, 0
+			if strings.Count(rest, ":") >= 2 {
+				idx := strings.LastIndex(rest, ":")
+				d, err := strconv.Atoi(rest[idx+1:])
+				if err != nil || d <= 0 || d > 365 {
+					return nil, fmt.Errorf("cannot watch %q: %q is not a day count", w, rest[idx+1:])
+				}
+				addr, days = rest[:idx], d
+			}
+			if addr == "" {
+				return nil, fmt.Errorf("cannot watch %q: cert needs a host", w)
+			}
+			if !strings.Contains(addr, ":") {
+				addr = net.JoinHostPort(addr, "443")
+			}
+			if _, _, err := net.SplitHostPort(addr); err != nil {
+				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+			}
+			checks = append(checks, check.Cert{Addr: addr, WarnWithin: time.Duration(days) * 24 * time.Hour})
 		case "disk":
 			path, pct, err := splitThreshold(rest)
 			if err != nil {

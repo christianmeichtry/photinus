@@ -7,6 +7,7 @@
 package swarm
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -27,6 +28,15 @@ type Config struct {
 	// Seeds are addresses of lanterns to join through. Order does not matter
 	// and no seed matters after startup.
 	Seeds []string
+	// Advertise is the host:port peers should reach this lantern on, for
+	// machines where the bind address is not what the world sees (NAT,
+	// several interfaces). A bare host keeps the bind port. Empty lets
+	// memberlist guess, which is right on simple LAN boxes.
+	Advertise string
+	// Key is the shared swarm secret. When set, gossip is encrypted and
+	// lanterns without the same key cannot join or inject anything. The
+	// actual cipher key is derived from it, so any passphrase works.
+	Key string
 	// OnFlash is called for every flash payload received from a peer. It must
 	// not block; copy is already taken care of.
 	OnFlash func(payload []byte)
@@ -82,6 +92,26 @@ func Join(cfg Config) (*Swarm, error) {
 	// memberlist's own logging is developer noise, not operator information.
 	mc.LogOutput = io.Discard
 
+	if cfg.Advertise != "" {
+		ahost, aport := cfg.Advertise, port
+		if h, p, err := net.SplitHostPort(cfg.Advertise); err == nil {
+			n, err := strconv.Atoi(p)
+			if err != nil {
+				return nil, fmt.Errorf("parsing advertise port %q: %w", p, err)
+			}
+			ahost, aport = h, n
+		}
+		mc.AdvertiseAddr = ahost
+		mc.AdvertisePort = aport
+	}
+
+	if cfg.Key != "" {
+		// Derive a fixed-size cipher key so operators can pick any
+		// passphrase instead of minting exactly 32 bytes.
+		sum := sha256.Sum256([]byte(cfg.Key))
+		mc.SecretKey = sum[:]
+	}
+
 	ml, err := memberlist.Create(mc)
 	if err != nil {
 		return nil, fmt.Errorf("starting gossip on %s: %w", cfg.Bind, err)
@@ -90,6 +120,9 @@ func Join(cfg Config) (*Swarm, error) {
 	s.queue = &memberlist.TransmitLimitedQueue{
 		NumNodes:       ml.NumMembers,
 		RetransmitMult: 3,
+	}
+	if cfg.Key != "" {
+		logger.Printf("gossip is encrypted, only lanterns holding the same key can join")
 	}
 
 	if len(cfg.Seeds) > 0 {

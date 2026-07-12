@@ -51,6 +51,24 @@ packets of roughly 1400 bytes. Also deferred: full state sync on join via
 memberlist's push/pull hooks (LocalState/MergeRemoteState are stubs). A late
 joiner converges within one flash interval anyway, since flashes repeat.
 
+### Remote swarms: advertise and the shared key
+
+Two flags make multi-machine swarms workable. `-advertise host[:port]` tells
+peers where to reach a lantern when the bind address is not what the world
+sees (NAT, several interfaces); without it memberlist guesses, which is right
+on simple LAN boxes and wrong almost everywhere else. `-key` is a shared
+swarm secret: it switches on memberlist's gossip encryption and doubles as
+the join gate, since a lantern without the key cannot decrypt anything and
+is refused. The cipher key is derived from the passphrase with SHA-256, so
+operators pick a sentence instead of minting exactly 32 bytes. The key also
+reads from `$PHOTINUS_KEY` so it does not have to sit in `ps` output.
+
+Consciously deferred: per-lantern identity or certificates. One shared key
+means one trust zone, which matches the current design assumption that the
+swarm runs on a network you already trust with your monitoring. Also still
+using memberlist's LAN timing profile; geographically spread swarms over
+WAN links will want the WAN profile once that becomes real.
+
 ### Status is a unix socket, answered from memory
 
 `photinus status` talks to the local lantern over a unix socket

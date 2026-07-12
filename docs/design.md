@@ -137,6 +137,44 @@ reason: observation aging compares peer stamps against the local clock, so a
 lantern drifted beyond maxAge silently loses its vote. The default threshold
 of 5 seconds sits inside the default aging window of 10 seconds.
 
+### Notification: hash election, no protocol
+
+Every lantern detects the same outages, so the problem is not sending a page
+but sending exactly one. The election is rendezvous hashing: each alive
+lantern gets a score from hashing its ID with the alert, the highest score
+wins, and everyone computes the same winner from the same facts. There is no
+election protocol, no term counters, no coordinator, nothing to time out.
+When the winner is dead it is simply absent from the alive list and the next
+score wins by the same arithmetic.
+
+The tracker on each lantern fires only on state transitions: down when a
+subject newly reaches quorum, recovered when it stops. Three edges got
+explicit treatment:
+
+- **Startup.** A lantern that just started is a swarm of one and its own
+  vote is a quorum, so the tracker stays quiet for a warmup equal to the
+  observation aging window. After warmup, an already-down subject does page:
+  a fresh swarm facing a dead host should say so, and a restarted lantern
+  occasionally re-paging an ongoing outage is the right side of that trade.
+- **Unknown is not recovered.** A subject with zero live observations keeps
+  its last known state and produces nothing. Stale is silence, not good
+  news.
+- **The elected sender dies mid-outage.** Survivors cannot know whether the
+  page got out before the death, so the next winner sends it again. A
+  duplicate page beats a silent outage, deliberately. Membership growth
+  alone never re-pages; only the recorded sender's death does.
+
+The outbound channel is one exec'd command with four arguments: kind, check,
+target, and a sentence. No retry: a notification channel that needs retries
+needs fixing. More channels (mail, webhooks) can come as more Senders, and a
+second channel is explicitly not wanted until one alert reliably arrives
+exactly once.
+
+Under a partition both sides still make independent decisions, but the
+minority cannot reach quorum at all (the last-known-size rule), so it also
+cannot page. Exactly-once is therefore per connected majority, which is the
+strongest claim a coordinator-free design can honestly make.
+
 ## Verified behavior (the milestone)
 
 Two lanterns on one machine, seeded at each other, both watching a TCP port
@@ -151,10 +189,11 @@ with nothing listening:
 
 ## Open problems, in rough order of next
 
-1. `internal/notify` with deterministic hash election.
+1. The YAML config file and per-OS default paths; the flag list has grown
+   past what a systemd unit should carry inline.
 2. Graceful-leave shrinking of the ever-seen ledger, and alerting on
    partition (the two halves of the partition problem in CLAUDE.md).
-3. The YAML config file and per-OS default paths.
-4. Windows probes for the resource checks.
-5. Binary flash encoding once observation counts grow. Skew and the resource
+3. Windows probes for the resource checks.
+4. Binary flash encoding once observation counts grow. Skew and the resource
    checks added observations per lantern, so this is closer than it was.
+5. More notification channels as additional Senders, mail first.

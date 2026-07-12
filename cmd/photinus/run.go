@@ -18,6 +18,7 @@ import (
 
 	"github.com/christianmeichtry/photinus/internal/check"
 	"github.com/christianmeichtry/photinus/internal/lantern"
+	"github.com/christianmeichtry/photinus/internal/notify"
 	"github.com/christianmeichtry/photinus/internal/swarm"
 )
 
@@ -39,12 +40,18 @@ func runCmd(args []string) error {
 	key := fs.String("key", os.Getenv("PHOTINUS_KEY"), "shared swarm secret: encrypts gossip and keeps strangers out (defaults to $PHOTINUS_KEY, empty runs open)")
 	interval := fs.Duration("interval", 2*time.Second, "time between flashes")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
+	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
 	var seeds, watches stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
 	fs.Var(&watches, "watch", "a check to run (repeatable): tcp:host:port, disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration]")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if fs.NArg() > 0 {
+		// The flag package stops at the first thing that does not look
+		// like a flag; silently ignoring the rest hides broken commands.
+		return fmt.Errorf("unexpected argument %q, flags must come before it", fs.Arg(0))
 	}
 
 	if *id == "" {
@@ -62,11 +69,19 @@ func runCmd(args []string) error {
 
 	logger := log.New(os.Stderr, "", log.Ltime)
 
+	var tracker *notify.Tracker
+	if *notifyCmd != "" {
+		// The warmup matches the observation aging window: by then the
+		// swarm has formed and a lantern is no longer a quorum of one.
+		tracker = notify.New(*id, 5*(*interval), notify.Exec(*notifyCmd, logger), logger)
+	}
+
 	lan := lantern.New(lantern.Config{
 		ID:       *id,
 		Interval: *interval,
 		SkewMax:  *skewMax,
 		Checks:   checks,
+		Notify:   tracker,
 		Logger:   logger,
 	})
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/christianmeichtry/photinus/internal/check"
+	"github.com/christianmeichtry/photinus/internal/notify"
 	"github.com/christianmeichtry/photinus/internal/quorum"
 	"github.com/christianmeichtry/photinus/internal/swarm"
 )
@@ -32,6 +33,10 @@ type Config struct {
 	// SkewMax is the clock drift against a peer that trips the skew check.
 	// Zero or negative disables skew measurement.
 	SkewMax time.Duration
+	// Notify, when set, is fed the swarm's decisions after every flash so
+	// the elected lantern can send the one notification. Nil means no
+	// notifications from this lantern.
+	Notify *notify.Tracker
 	// Logger receives operator-facing log lines. Nil silences the lantern.
 	Logger *log.Logger
 }
@@ -43,6 +48,7 @@ type Lantern struct {
 	maxAge   time.Duration
 	skewMax  time.Duration
 	checks   []check.Check
+	notify   *notify.Tracker
 	log      *log.Logger
 
 	mu       sync.Mutex
@@ -72,6 +78,7 @@ func New(cfg Config) *Lantern {
 		maxAge:   maxAge,
 		skewMax:  cfg.SkewMax,
 		checks:   cfg.Checks,
+		notify:   cfg.Notify,
 		log:      logger,
 		store:    make(map[string]quorum.Observation),
 		clocks:   make(map[string]*peerClock),
@@ -132,15 +139,24 @@ func (l *Lantern) flash(ctx context.Context) {
 	sw := l.sw
 	l.mu.Unlock()
 
-	if sw == nil || len(own) == 0 {
-		return
+	if sw != nil && len(own) > 0 {
+		if payload, err := json.Marshal(own); err != nil {
+			l.log.Printf("could not encode a flash, skipping this one: %v", err)
+		} else {
+			sw.Flash(payload)
+		}
 	}
-	payload, err := json.Marshal(own)
-	if err != nil {
-		l.log.Printf("could not encode a flash, skipping this one: %v", err)
-		return
+
+	// With the flash out, look at what the swarm now agrees on and let the
+	// elected lantern notify. Every lantern runs this; only the winner acts.
+	if l.notify != nil {
+		st := l.Status()
+		decisions := make([]quorum.Decision, len(st.Subjects))
+		for i, s := range st.Subjects {
+			decisions[i] = s.Decision
+		}
+		l.notify.Observe(decisions, st.Swarm, now)
 	}
-	sw.Flash(payload)
 }
 
 // ReceiveFlash merges a peer's flash into local memory. The newest

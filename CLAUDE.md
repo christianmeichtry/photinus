@@ -12,8 +12,9 @@ Named after *Photinus carolinus*, the firefly that flashes in unison with nothin
 coordinating it. Every design decision should be checkable against that: **is this thing
 still true if any single node disappears?** If the answer is no, it is wrong.
 
-Status: pre-alpha. The mesh works: lanterns gossip, agree, and run all seven
-check types. No notification yet, no config file.
+Status: pre-alpha. The mesh works end to end: lanterns gossip, agree, run all
+seven check types, and the elected lantern pages exactly once. No config file
+yet, flags only.
 
 ## Vocabulary (use these words in code, comments, docs, CLI, and commit messages)
 
@@ -174,19 +175,16 @@ gofmt -l .                    # must print nothing
 
 ## Current milestone
 
-A swarm that pages you exactly once. `internal/notify` with the deterministic
-hash election from the hard-problems section: when quorum convicts a subject,
-the alive lantern whose ID hashes closest to the alert sends the one
-notification, and nobody else does. Start with a single outbound channel
-(exec a command with the alert as arguments is enough to prove it), and test
-the degraded case where the elected lantern is the dead one.
+The config file. One YAML file at the per-OS default path (see Stack),
+covering everything the flags do today: identity, bind/advertise, seeds, key,
+checks with thresholds, notify command, intervals. Flags stay and win over
+the file, so nothing breaks. The file is the deployment story: a systemd
+unit or launchd plist should say `photinus run` and nothing else.
 
-Done so far: the mesh (two lanterns agree a fake host is down, verified), all
-seven check types, the authority rule for local checks, skew from flash
-timestamps. The history is in docs/design.md.
-
-No YAML config and no second notification channel until one alert reliably
-arrives exactly once.
+Done so far: the mesh, all seven check types, the authority rule for local
+checks, skew from flash timestamps, remote swarms (-advertise, -key), and
+notification with hash election, verified to page exactly once including the
+takeover when the elected sender dies. The history is in docs/design.md.
 
 ## Repo layout beyond the code
 

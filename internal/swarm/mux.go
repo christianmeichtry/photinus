@@ -52,7 +52,10 @@ func newMuxTransport(bindAddr string, bindPort int, handler http.Handler, logger
 	}
 	if handler != nil {
 		t.httpLn = &chanListener{ch: make(chan net.Conn), done: make(chan struct{})}
-		srv := &http.Server{Handler: handler}
+		// ReadHeaderTimeout bounds a client that opens a connection and
+		// then goes quiet: classification only covers the first byte, so
+		// the HTTP server needs its own deadline for the rest.
+		srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 		go srv.Serve(t.httpLn)
 	}
 	go t.route()
@@ -65,15 +68,27 @@ func (t *muxTransport) StreamCh() <-chan net.Conn {
 }
 
 func (t *muxTransport) Shutdown() error {
+	// Order matters. memberlist's listener goroutine can be blocked handing
+	// an accepted connection to the stream channel, and NetTransport's own
+	// Shutdown waits for that goroutine. So route must keep draining the
+	// channel through this call; only once the inner transport is fully
+	// down do we stop route (close t.stop) and the HTTP side. Stopping
+	// route first would deadlock Shutdown.
+	err := t.NetTransport.Shutdown()
 	close(t.stop)
 	if t.httpLn != nil {
 		t.httpLn.Close()
 	}
-	return t.NetTransport.Shutdown()
+	return err
 }
 
 // route drains the inner transport's stream channel, classifies each
 // connection by its first byte, and delivers it to the right consumer.
+//
+// t.gossip is deliberately never closed: classify goroutines send to it
+// under a select on t.stop, and closing it from here would race with those
+// sends into a panic at shutdown. memberlist reads StreamCh until its own
+// shutdown and does not require it to be closed.
 func (t *muxTransport) route() {
 	inner := t.NetTransport.StreamCh()
 	for {
@@ -82,7 +97,6 @@ func (t *muxTransport) route() {
 			return
 		case conn, ok := <-inner:
 			if !ok {
-				close(t.gossip)
 				return
 			}
 			go t.classify(conn)

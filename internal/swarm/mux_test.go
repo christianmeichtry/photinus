@@ -120,3 +120,28 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// TestMuxShutdownRace hammers create/connect/shutdown to surface any
+// send-on-closed-channel race between route and classify. Run with -race.
+func TestMuxShutdownRace(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+		mux, err := newMuxTransport("127.0.0.1", 0, handler, nil)
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		addr := net.JoinHostPort("127.0.0.1", itoa(mux.GetAutoBindPort()))
+		// A few connections in flight (a gossip byte and an HTTP byte),
+		// then shut down immediately underneath them.
+		for j := 0; j < 4; j++ {
+			if c, err := net.Dial("tcp", addr); err == nil {
+				if j%2 == 0 {
+					c.Write([]byte{5})
+				} else {
+					c.Write([]byte("GET / HTTP/1.1\r\n"))
+				}
+			}
+		}
+		mux.Shutdown()
+	}
+}

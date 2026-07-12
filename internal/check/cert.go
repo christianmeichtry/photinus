@@ -37,9 +37,16 @@ func (c Cert) Run(ctx context.Context) Result {
 		return Result{Verdict: Failed, Detail: fmt.Sprintf("bad address: %v", err)}
 	}
 
-	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := tls.DialWithDialer(dialer, "tcp", c.Addr, &tls.Config{ServerName: host})
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	d := net.Dialer{Timeout: timeout}
+	raw, err := d.DialContext(ctx, "tcp", c.Addr)
 	if err != nil {
+		return Result{Verdict: Failed, Detail: "cannot connect: " + err.Error()}
+	}
+	conn := tls.Client(raw, &tls.Config{ServerName: host})
+	defer conn.Close()
+	if err := conn.HandshakeContext(ctx); err != nil {
 		// Verification failures land here too: wrong host, unknown
 		// authority, expired. All of them block users, all of them are
 		// down.
@@ -47,7 +54,6 @@ func (c Cert) Run(ctx context.Context) Result {
 		reason = strings.TrimPrefix(reason, "tls: failed to verify certificate: ")
 		return Result{Verdict: Failed, Detail: "certificate refused: " + reason}
 	}
-	defer conn.Close()
 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {

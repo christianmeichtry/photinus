@@ -80,9 +80,12 @@ Both TCP and UDP, per box.
 ## macOS: the lantern advertises something ending in `.local`
 
 `hostname -f` on a Mac returns an mDNS name that only the local network
-resolves. Pass the public name explicitly: `-advertise mac.example.com`
-(with `:port` if it sits behind a shared NAT). `-id mac` also reads
-better in status than `Mac.local`.
+resolves, and worse, it can resolve to the self-assigned 169.254 address
+of a dead interface. photinus refuses loopback and link-local addresses
+and falls back to the outbound interface, but behind NAT even that is a
+LAN address peers cannot route to. Pass the public name explicitly:
+`-advertise mac.example.com` (with `:port` if it sits behind a shared
+NAT). `-id mac` also reads better in status than `Mac.local`.
 
 ## After an upgrade, status still shows the old output
 

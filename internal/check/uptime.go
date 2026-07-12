@@ -40,5 +40,20 @@ func (u *Uptime) Run(ctx context.Context) Result {
 	if up < min {
 		return Result{Verdict: Warn, Detail: fmt.Sprintf("host rebooted %s ago", up.Round(time.Second))}
 	}
-	return Result{Verdict: OK, Detail: fmt.Sprintf("up for %s", up.Round(time.Minute))}
+	return Result{Verdict: OK, Detail: "up for " + humanDuration(up)}
+}
+
+// humanDuration says a duration the way an operator would: one unit, no
+// arithmetic left to the reader.
+func humanDuration(d time.Duration) string {
+	switch {
+	case d >= 48*time.Hour:
+		return fmt.Sprintf("%d days", int(d.Hours()/24))
+	case d >= 2*time.Hour:
+		return fmt.Sprintf("%d hours", int(d.Hours()))
+	case d >= 2*time.Minute:
+		return fmt.Sprintf("%d minutes", int(d.Minutes()))
+	default:
+		return d.Round(time.Second).String()
+	}
 }

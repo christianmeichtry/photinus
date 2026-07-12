@@ -61,13 +61,13 @@ func statusCmd(args []string) error {
 		return enc.Encode(st)
 	}
 
-	printTable(st, *verbose)
+	printStatus(st, *verbose)
 	return nil
 }
 
 // Colors are decoration, never information: everything they say is also in
 // the words, so a pipe or NO_COLOR loses nothing.
-type palette struct{ down, warn, up, dim, reset string }
+type palette struct{ down, warn, up, dim, bold, reset string }
 
 func colors() palette {
 	fi, err := os.Stdout.Stat()
@@ -80,35 +80,50 @@ func colors() palette {
 		warn:  "\033[33m",
 		up:    "\033[32m",
 		dim:   "\033[2m",
+		bold:  "\033[1m",
 		reset: "\033[0m",
 	}
 }
 
-func stateRank(s string) int {
-	switch s {
-	case quorum.StateDown:
+func stateRank(s lantern.SubjectStatus) int {
+	switch {
+	case s.Voters == 0:
+		return 3
+	case s.State == quorum.StateDown:
 		return 0
-	case quorum.StateWarn:
+	case s.State == quorum.StateWarn:
 		return 1
-	default:
+	case s.Votes > 0:
 		return 2
+	default:
+		return 4
 	}
 }
 
-func printTable(st lantern.Status, verbose bool) {
+// hostSection groups everything the swarm knows about one box: the liveness
+// and clock verdicts feed the header, the checks become rows.
+type hostSection struct {
+	target string
+	live   *lantern.SubjectStatus
+	skew   *lantern.SubjectStatus
+	rows   []lantern.SubjectStatus
+}
+
+func printStatus(st lantern.Status, verbose bool) {
 	c := colors()
 
 	downs, warns := 0, 0
 	for _, s := range st.Subjects {
-		switch s.State {
-		case quorum.StateDown:
+		switch {
+		case s.Voters == 0:
+		case s.State == quorum.StateDown:
 			downs++
-		case quorum.StateWarn:
+		case s.State == quorum.StateWarn:
 			warns++
 		}
 	}
 
-	head := fmt.Sprintf("lantern %s %s·%s swarm %d lit of %d known", st.ID, c.dim, c.reset, len(st.Swarm), st.LastKnownSize)
+	head := fmt.Sprintf("%slantern %s%s %s·%s swarm %d lit of %d known", c.bold, st.ID, c.reset, c.dim, c.reset, len(st.Swarm), st.LastKnownSize)
 	switch {
 	case downs == 0 && warns == 0 && len(st.Subjects) > 0:
 		head += fmt.Sprintf(" %s·%s %sall quiet%s", c.dim, c.reset, c.up, c.reset)
@@ -128,53 +143,164 @@ func printTable(st lantern.Status, verbose bool) {
 		fmt.Println("no checks reporting yet")
 		return
 	}
-	fmt.Println()
 
-	sort.Slice(st.Subjects, func(i, j int) bool {
-		a, b := st.Subjects[i], st.Subjects[j]
-		if r1, r2 := stateRank(a.State), stateRank(b.State); r1 != r2 {
-			return r1 < r2
-		}
-		if a.Check != b.Check {
-			return a.Check < b.Check
-		}
-		return a.Target < b.Target
-	})
-
-	checkW, targetW, agreeW := len("CHECK"), len("TARGET"), len("AGREEMENT")
+	// A target is a box when the swarm holds host-shaped knowledge about
+	// it: liveness, clock, or its own local reports. Everything else is a
+	// watched service.
+	sections := make(map[string]*hostSection)
 	for _, s := range st.Subjects {
-		checkW = max(checkW, len(s.Check))
-		targetW = max(targetW, len(s.Target))
-		agreeW = max(agreeW, len(agreement(s.Decision)))
-	}
-
-	fmt.Printf("%s%-6s %-*s %-*s %-*s %s%s\n", c.dim, "STATE", checkW, "CHECK", targetW, "TARGET", agreeW, "AGREEMENT", "DETAIL", c.reset)
-	for _, s := range st.Subjects {
-		state, color := "up", c.up
-		switch {
-		case s.Voters == 0:
-			// Nobody has a fresh observation. Stale is unknown, and
-			// unknown must not dress up as healthy.
-			state, color = "?", c.dim
-		case s.State == quorum.StateDown:
-			state, color = "DOWN", c.down
-		case s.State == quorum.StateWarn:
-			state, color = "WARN", c.warn
-		case s.Votes > 0:
-			// Accused but short of quorum. One lantern's opinion is not
-			// an outage, but pairing a green up with an accusation would
-			// contradict the detail column.
-			state, color = "sus", c.warn
-		}
-		fmt.Printf("%s%-6s%s %-*s %-*s %-*s %s\n",
-			color, state, c.reset, checkW, s.Check, targetW, s.Target, agreeW, agreement(s.Decision), s.Detail)
-		if verbose {
-			for _, o := range s.Observations {
-				fmt.Printf("%s       %-*s %s says %s: %s%s\n",
-					c.dim, checkW, "", o.Observer, o.State, o.Detail, c.reset)
+		if s.Check == "lantern" || s.Check == "skew" || s.Authority {
+			if sections[s.Target] == nil {
+				sections[s.Target] = &hostSection{target: s.Target}
 			}
 		}
 	}
+	var services []lantern.SubjectStatus
+	for _, s := range st.Subjects {
+		sec := sections[s.Target]
+		if sec == nil {
+			services = append(services, s)
+			continue
+		}
+		switch s.Check {
+		case "lantern":
+			v := s
+			sec.live = &v
+		case "skew":
+			v := s
+			sec.skew = &v
+		default:
+			sec.rows = append(sec.rows, s)
+		}
+	}
+
+	names := make([]string, 0, len(sections))
+	for name := range sections {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		sec := sections[name]
+		fmt.Println()
+		fmt.Println(hostHeader(sec, c))
+		if verbose {
+			for _, s := range []*lantern.SubjectStatus{sec.live, sec.skew} {
+				if s == nil {
+					continue
+				}
+				for _, o := range s.Observations {
+					fmt.Printf("  %s%s says %s %s: %s%s\n", c.dim, o.Observer, s.Check, o.State, o.Detail, c.reset)
+				}
+			}
+		}
+		sort.Slice(sec.rows, func(i, j int) bool {
+			a, b := sec.rows[i], sec.rows[j]
+			if r1, r2 := stateRank(a), stateRank(b); r1 != r2 {
+				return r1 < r2
+			}
+			return a.Check < b.Check
+		})
+		checkW := 0
+		for _, s := range sec.rows {
+			checkW = max(checkW, len(s.Check))
+		}
+		for _, s := range sec.rows {
+			word, color := stateWord(s, c)
+			fmt.Printf("  %s%-5s%s %-*s %s\n", color, word, c.reset, checkW, s.Check, trimDetail(s))
+			if verbose {
+				for _, o := range s.Observations {
+					fmt.Printf("        %s%s says %s: %s%s\n", c.dim, o.Observer, o.State, o.Detail, c.reset)
+				}
+			}
+		}
+	}
+
+	if len(services) > 0 {
+		fmt.Println()
+		fmt.Printf("%swatched services%s\n", c.bold, c.reset)
+		sort.Slice(services, func(i, j int) bool {
+			a, b := services[i], services[j]
+			if r1, r2 := stateRank(a), stateRank(b); r1 != r2 {
+				return r1 < r2
+			}
+			return a.Target < b.Target
+		})
+		targetW := 0
+		for _, s := range services {
+			targetW = max(targetW, len(s.Target))
+		}
+		for _, s := range services {
+			word, color := stateWord(s, c)
+			fmt.Printf("  %s%-5s%s %-*s %s %s(%s)%s\n",
+				color, word, c.reset, targetW, s.Target, s.Detail, c.dim, agreement(s.Decision), c.reset)
+			if verbose {
+				for _, o := range s.Observations {
+					fmt.Printf("        %s%s says %s: %s%s\n", c.dim, o.Observer, o.State, o.Detail, c.reset)
+				}
+			}
+		}
+	}
+}
+
+// hostHeader compresses a box's liveness and clock into one line:
+// "jawa · lit, 2 vouch · clock in step".
+func hostHeader(sec *hostSection, c palette) string {
+	head := c.bold + sec.target + c.reset
+	if s := sec.live; s != nil {
+		switch {
+		case s.Voters == 0:
+			head += fmt.Sprintf(" %s· no fresh word%s", c.dim, c.reset)
+		case s.State == quorum.StateDown:
+			head += fmt.Sprintf(" %s·%s %sDARK, %d/%d agree, quorum %d%s", c.dim, c.reset, c.down, s.Votes, s.Voters, s.Needed, c.reset)
+		case s.Votes > 0:
+			head += fmt.Sprintf(" %s·%s %ssuspected by %d of %d, quorum %d%s", c.dim, c.reset, c.warn, s.Votes, s.Voters, s.Needed, c.reset)
+		default:
+			head += fmt.Sprintf(" %s·%s %slit%s%s, %d vouch%s", c.dim, c.reset, c.up, c.reset, c.dim, s.Voters, c.reset)
+		}
+	}
+	if s := sec.skew; s != nil && s.Voters > 0 {
+		clock := "clock in step"
+		color := c.dim
+		if s.State != quorum.StateUp || s.Votes > 0 {
+			// The detail says "clock of jawa runs about 40s behind mine";
+			// inside jawa's own section the name and the mine are noise.
+			clock = strings.ReplaceAll(s.Detail, "clock of "+sec.target+" ", "clock ")
+			clock = strings.TrimSuffix(strings.ReplaceAll(clock, " with mine", ""), " mine")
+			color = c.warn
+		}
+		head += fmt.Sprintf(" %s·%s %s%s%s", c.dim, c.reset, color, clock, c.reset)
+	}
+	return head
+}
+
+func stateWord(s lantern.SubjectStatus, c palette) (string, string) {
+	switch {
+	case s.Voters == 0:
+		return "?", c.dim
+	case s.State == quorum.StateDown:
+		return "DOWN", c.down
+	case s.State == quorum.StateWarn:
+		return "WARN", c.warn
+	case s.Votes > 0:
+		return "sus", c.warn
+	default:
+		return "up", c.up
+	}
+}
+
+// trimDetail drops the words the row already says: inside a host section a
+// row named cpu does not need its detail to begin with "cpu is".
+func trimDetail(s lantern.SubjectStatus) string {
+	d := s.Detail
+	base := s.Check
+	if strings.HasPrefix(base, "disk:") {
+		path := strings.TrimPrefix(base, "disk:")
+		d = strings.TrimPrefix(d, "disk "+path+" is ")
+		return d
+	}
+	d = strings.TrimPrefix(d, base+" is ")
+	return d
 }
 
 func agreement(d quorum.Decision) string {

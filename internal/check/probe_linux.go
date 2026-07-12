@@ -44,7 +44,13 @@ func readMemUsage() (memUsage, error) {
 	}
 	vals, err := parseMeminfo(data, "MemTotal", "MemAvailable")
 	if err != nil {
-		return memUsage{}, err
+		// Kernels before 3.14 have no MemAvailable. The old approximation
+		// of free plus reclaimable caches is close enough for a threshold.
+		vals, err = parseMeminfo(data, "MemTotal", "MemFree", "Buffers", "Cached")
+		if err != nil {
+			return memUsage{}, err
+		}
+		vals["MemAvailable"] = vals["MemFree"] + vals["Buffers"] + vals["Cached"]
 	}
 	total, avail := vals["MemTotal"], vals["MemAvailable"]
 	if avail > total {

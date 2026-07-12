@@ -14,7 +14,7 @@ func TestUptimeThreshold(t *testing.T) {
 		min    time.Duration
 		want   Verdict
 	}{
-		{"fresh reboot trips", 30 * time.Second, 3 * time.Minute, Failed},
+		{"fresh reboot trips", 30 * time.Second, 3 * time.Minute, Warn},
 		{"long uptime passes", 40 * 24 * time.Hour, 3 * time.Minute, OK},
 		{"exactly at threshold passes", 3 * time.Minute, 3 * time.Minute, OK},
 	}
@@ -42,9 +42,9 @@ func TestDiskThreshold(t *testing.T) {
 		max  float64
 		want Verdict
 	}{
-		{"nearly full trips", 95, 90, Failed},
+		{"nearly full trips", 95, 90, Warn},
 		{"half full passes", 50, 90, OK},
-		{"default threshold is 90", 92, 0, Failed},
+		{"default threshold is 90", 92, 0, Warn},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,8 +67,8 @@ func TestCPUThreshold(t *testing.T) {
 		c := &CPU{Host: "l1", Max: max, probe: func() (float64, bool, error) { return pct, ready, nil }}
 		return c.Run(context.Background())
 	}
-	if got := run(99, true, 95); got.Verdict != Failed {
-		t.Errorf("busy cpu: verdict = %s, want %s", got.Verdict, Failed)
+	if got := run(99, true, 95); got.Verdict != Warn {
+		t.Errorf("busy cpu: verdict = %s, want %s", got.Verdict, Warn)
 	}
 	if got := run(20, true, 95); got.Verdict != OK {
 		t.Errorf("idle cpu: verdict = %s, want %s", got.Verdict, OK)
@@ -86,8 +86,8 @@ func TestMemoryThreshold(t *testing.T) {
 		}}
 		return m.Run(context.Background())
 	}
-	if got := run(31<<30, 32<<30, 95); got.Verdict != Failed {
-		t.Errorf("nearly full memory: verdict = %s, want %s", got.Verdict, Failed)
+	if got := run(31<<30, 32<<30, 95); got.Verdict != Warn {
+		t.Errorf("nearly full memory: verdict = %s, want %s", got.Verdict, Warn)
 	}
 	if got := run(16<<30, 32<<30, 95); got.Verdict != OK {
 		t.Errorf("half used memory: verdict = %s, want %s", got.Verdict, OK)
@@ -101,8 +101,8 @@ func TestSwapThreshold(t *testing.T) {
 		}}
 		return s.Run(context.Background())
 	}
-	if got := run(7<<30, 8<<30, 80); got.Verdict != Failed {
-		t.Errorf("nearly full swap: verdict = %s, want %s", got.Verdict, Failed)
+	if got := run(7<<30, 8<<30, 80); got.Verdict != Warn {
+		t.Errorf("nearly full swap: verdict = %s, want %s", got.Verdict, Warn)
 	}
 	if got := run(1<<30, 8<<30, 80); got.Verdict != OK {
 		t.Errorf("light swap: verdict = %s, want %s", got.Verdict, OK)

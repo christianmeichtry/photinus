@@ -19,7 +19,8 @@ import (
 
 // Event is one state change worth telling an operator about.
 type Event struct {
-	// Kind is "down" or "recovered".
+	// Kind is "down", "warning", "recovered" (up after down), or "cleared"
+	// (up after a warning).
 	Kind   string
 	Check  string
 	Target string
@@ -59,8 +60,8 @@ type Tracker struct {
 	log    *log.Logger
 
 	start   time.Time
-	down    map[string]bool   // subject -> currently considered down
-	elected map[string]string // subject -> lantern elected to page while down
+	state   map[string]string // subject -> last known state
+	elected map[string]string // subject -> lantern elected to notify while not up
 }
 
 // New builds a tracker. The warmup is how long after the first observation
@@ -75,7 +76,7 @@ func New(self string, warmup time.Duration, send Sender, logger *log.Logger) *Tr
 		warmup:  warmup,
 		send:    send,
 		log:     logger,
-		down:    make(map[string]bool),
+		state:   make(map[string]string),
 		elected: make(map[string]string),
 	}
 }
@@ -85,7 +86,8 @@ func New(self string, warmup time.Duration, send Sender, logger *log.Logger) *Tr
 // sent, which is empty on every lantern except the elected one.
 //
 // A subject nobody has a live observation about is unknown, and unknown is
-// not recovered: the state simply holds until somebody sees something.
+// neither recovered nor cleared: the state simply holds until somebody sees
+// something.
 func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.Time) []Event {
 	if t.start.IsZero() {
 		t.start = now
@@ -97,55 +99,108 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 	var sent []Event
 	for _, d := range decisions {
 		subject := d.Check + " " + d.Target
-		wasDown := t.down[subject]
-		switch {
-		case d.Voters == 0:
+		if d.Voters == 0 {
 			// Unknown. Say nothing, keep the last known state.
-		case d.Down && !wasDown:
-			t.down[subject] = true
-			winner := Elect(subject, alive)
-			t.elected[subject] = winner
-			t.log.Printf("%s is down, lantern %s sends the notification", subject, winner)
-			if winner == t.self {
-				ev := Event{Kind: "down", Check: d.Check, Target: d.Target, Detail: downDetail(d)}
-				t.send(ev)
-				sent = append(sent, ev)
-			}
-		case d.Down && wasDown:
-			// Still down. If the lantern elected to page has died since,
-			// the next winner owes the operator that page: it cannot know
-			// whether the dead one got it out, and a duplicate page beats
-			// a silent outage.
-			if prev := t.elected[subject]; !slices.Contains(alive, prev) {
-				winner := Elect(subject, alive)
-				t.elected[subject] = winner
-				t.log.Printf("lantern %s went dark while %s is down, lantern %s takes over the notification", prev, subject, winner)
-				if winner == t.self {
-					ev := Event{Kind: "down", Check: d.Check, Target: d.Target, Detail: downDetail(d)}
-					t.send(ev)
-					sent = append(sent, ev)
+			continue
+		}
+		prev, known := t.state[subject]
+		if !known {
+			prev = quorum.StateUp
+		}
+		cur := d.State
+
+		if cur == prev {
+			// Unchanged. If the subject is not healthy and the lantern
+			// elected to notify has died since, the next winner owes the
+			// operator that message: it cannot know whether the dead one
+			// got it out, and a duplicate beats silence.
+			if cur != quorum.StateUp {
+				if e := t.elected[subject]; !slices.Contains(alive, e) {
+					winner := Elect(subject, alive)
+					t.elected[subject] = winner
+					t.log.Printf("lantern %s went dark while %s is %s, lantern %s takes over the notification", e, subject, stateWord(cur), winner)
+					if winner == t.self {
+						ev := t.event(d, kindFor(prev, cur))
+						t.send(ev)
+						sent = append(sent, ev)
+					}
 				}
 			}
-		case !d.Down && wasDown:
-			t.down[subject] = false
+			continue
+		}
+
+		t.state[subject] = cur
+		kind := kindFor(prev, cur)
+		winner := Elect(subject, alive)
+		if cur == quorum.StateUp {
 			delete(t.elected, subject)
-			winner := Elect(subject, alive)
-			t.log.Printf("%s recovered, lantern %s sends the notification", subject, winner)
-			if winner == t.self {
-				ev := Event{Kind: "recovered", Check: d.Check, Target: d.Target,
-					Detail: fmt.Sprintf("%s on %s recovered", d.Check, d.Target)}
-				t.send(ev)
-				sent = append(sent, ev)
-			}
+		} else {
+			t.elected[subject] = winner
+		}
+		t.log.Printf("%s is %s, lantern %s sends the %s notification", subject, stateWord(cur), winner, kind)
+		if winner == t.self {
+			ev := t.event(d, kind)
+			t.send(ev)
+			sent = append(sent, ev)
 		}
 	}
 	return sent
 }
 
-func downDetail(d quorum.Decision) string {
-	if d.Authority {
-		return fmt.Sprintf("%s on %s is down, its own lantern reports it", d.Check, d.Target)
+// kindFor names the transition. Down always announces as down, a warning as
+// warning, and the way back depends on how bad it was: recovered after an
+// outage, cleared after a warning.
+func kindFor(prev, cur string) string {
+	switch cur {
+	case quorum.StateDown:
+		return "down"
+	case quorum.StateWarn:
+		return "warning"
+	default:
+		if prev == quorum.StateDown {
+			return "recovered"
+		}
+		return "cleared"
 	}
-	return fmt.Sprintf("%s on %s is down, %d of %d lanterns agree and quorum needed %d",
-		d.Check, d.Target, d.Votes, d.Voters, d.Needed)
+}
+
+func stateWord(state string) string {
+	switch state {
+	case quorum.StateDown:
+		return "down"
+	case quorum.StateWarn:
+		return "warning"
+	default:
+		return "up"
+	}
+}
+
+func (t *Tracker) event(d quorum.Decision, kind string) Event {
+	return Event{Kind: kind, Check: d.Check, Target: d.Target, Detail: sentence(d, kind)}
+}
+
+func sentence(d quorum.Decision, kind string) string {
+	base := fmt.Sprintf("%s on %s", d.Check, d.Target)
+	switch kind {
+	case "down":
+		how := fmt.Sprintf("%d of %d lanterns agree and quorum needed %d", d.Votes, d.Voters, d.Needed)
+		if d.Authority {
+			how = "its own lantern reports it"
+		}
+		s := fmt.Sprintf("%s is down, %s", base, how)
+		if d.Detail != "" {
+			s += ": " + d.Detail
+		}
+		return s
+	case "warning":
+		s := fmt.Sprintf("%s warns", base)
+		if d.Detail != "" {
+			s += ": " + d.Detail
+		}
+		return s
+	case "recovered":
+		return base + " recovered"
+	default:
+		return base + " cleared"
+	}
 }

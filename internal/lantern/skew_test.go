@@ -34,8 +34,8 @@ func TestSkew(t *testing.T) {
 		if o == nil {
 			t.Fatal("no skew observation about l2")
 		}
-		if !o.Healthy {
-			t.Errorf("l2 reported skewed (%s), want healthy: minimum sample was 80ms", o.Detail)
+		if o.State != quorum.StateUp {
+			t.Errorf("l2 reported %s (%s), want up: minimum sample was 80ms", o.State, o.Detail)
 		}
 	})
 
@@ -49,8 +49,8 @@ func TestSkew(t *testing.T) {
 		if o == nil {
 			t.Fatal("no skew observation about l2")
 		}
-		if o.Healthy {
-			t.Errorf("l2 reported healthy (%s), want skewed by about 40s", o.Detail)
+		if o.State == quorum.StateUp {
+			t.Errorf("l2 reported up (%s), want a warning of about 40s", o.Detail)
 		}
 	})
 
@@ -62,8 +62,8 @@ func TestSkew(t *testing.T) {
 		if o == nil {
 			t.Fatal("no skew observation about l2")
 		}
-		if o.Healthy {
-			t.Errorf("l2 reported healthy (%s), want skewed: stamps from the future", o.Detail)
+		if o.State == quorum.StateUp {
+			t.Errorf("l2 reported up (%s), want a warning: stamps from the future", o.Detail)
 		}
 	})
 

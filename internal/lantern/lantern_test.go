@@ -10,10 +10,10 @@ import (
 
 func TestReceiveFlashMerge(t *testing.T) {
 	now := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
-	obs := func(observer string, healthy bool, age time.Duration) quorum.Observation {
+	obs := func(observer string, state string, age time.Duration) quorum.Observation {
 		return quorum.Observation{
 			Observer: observer, Target: "db:5432", Check: "tcp",
-			Healthy: healthy, Seen: now.Add(-age),
+			State: state, Seen: now.Add(-age),
 		}
 	}
 	encode := func(t *testing.T, os ...quorum.Observation) []byte {
@@ -35,34 +35,34 @@ func TestReceiveFlashMerge(t *testing.T) {
 	}{
 		{
 			name:    "new observation is stored",
-			flashes: [][]quorum.Observation{{obs("l2", false, time.Second)}},
+			flashes: [][]quorum.Observation{{obs("l2", quorum.StateDown, time.Second)}},
 			wantKey: "l2|tcp|db:5432",
-			want:    obs("l2", false, time.Second),
+			want:    obs("l2", quorum.StateDown, time.Second),
 		},
 		{
 			name:    "newer observation replaces older",
-			flashes: [][]quorum.Observation{{obs("l2", false, 10*time.Second)}, {obs("l2", true, time.Second)}},
+			flashes: [][]quorum.Observation{{obs("l2", quorum.StateDown, 10*time.Second)}, {obs("l2", quorum.StateUp, time.Second)}},
 			wantKey: "l2|tcp|db:5432",
-			want:    obs("l2", true, time.Second),
+			want:    obs("l2", quorum.StateUp, time.Second),
 		},
 		{
 			name:    "older observation does not roll back newer",
-			flashes: [][]quorum.Observation{{obs("l2", true, time.Second)}, {obs("l2", false, 10*time.Second)}},
+			flashes: [][]quorum.Observation{{obs("l2", quorum.StateUp, time.Second)}, {obs("l2", quorum.StateDown, 10*time.Second)}},
 			wantKey: "l2|tcp|db:5432",
-			want:    obs("l2", true, time.Second),
+			want:    obs("l2", quorum.StateUp, time.Second),
 		},
 		{
 			name:    "a peer claiming to be me is dropped, I am the authority on my own checks",
-			flashes: [][]quorum.Observation{{obs("l1", false, time.Second)}},
+			flashes: [][]quorum.Observation{{obs("l1", quorum.StateDown, time.Second)}},
 			wantKey: "l1|tcp|db:5432",
 			absent:  true,
 		},
 		{
 			name:    "my own stored observation survives an impersonating flash",
-			preload: []quorum.Observation{obs("l1", true, 2*time.Second)},
-			flashes: [][]quorum.Observation{{obs("l1", false, time.Second)}},
+			preload: []quorum.Observation{obs("l1", quorum.StateUp, 2*time.Second)},
+			flashes: [][]quorum.Observation{{obs("l1", quorum.StateDown, time.Second)}},
 			wantKey: "l1|tcp|db:5432",
-			want:    obs("l1", true, 2*time.Second),
+			want:    obs("l1", quorum.StateUp, 2*time.Second),
 		},
 	}
 
@@ -85,9 +85,9 @@ func TestReceiveFlashMerge(t *testing.T) {
 			if !ok {
 				t.Fatalf("store[%s] missing, want %+v", tt.wantKey, tt.want)
 			}
-			if got.Healthy != tt.want.Healthy || !got.Seen.Equal(tt.want.Seen) {
-				t.Errorf("store[%s] = healthy %v seen %v, want healthy %v seen %v",
-					tt.wantKey, got.Healthy, got.Seen, tt.want.Healthy, tt.want.Seen)
+			if got.State != tt.want.State || !got.Seen.Equal(tt.want.Seen) {
+				t.Errorf("store[%s] = state %s seen %v, want state %s seen %v",
+					tt.wantKey, got.State, got.Seen, tt.want.State, tt.want.Seen)
 			}
 		})
 	}

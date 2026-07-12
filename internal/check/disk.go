@@ -44,7 +44,7 @@ func (d *Disk) Run(ctx context.Context) Result {
 		return Result{Verdict: NotApplicable, Detail: fmt.Sprintf("cannot read disk usage of %s: %v", d.Path, err)}
 	}
 	if u.usedPercent > max {
-		return Result{Verdict: Failed, Detail: fmt.Sprintf("disk %s is %.0f%% full, %s left, threshold is %.0f%%",
+		return Result{Verdict: Warn, Detail: fmt.Sprintf("disk %s is %.0f%% full, %s left, threshold is %.0f%%",
 			d.Path, u.usedPercent, humanBytes(u.freeBytes), max)}
 	}
 	return Result{Verdict: OK, Detail: fmt.Sprintf("disk %s is %.0f%% full, %s free",

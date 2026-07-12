@@ -75,20 +75,23 @@ func (l *Lantern) skewObservations(now time.Time) []quorum.Observation {
 		if abs < 0 {
 			abs = -abs
 		}
+		state := quorum.StateUp
 		var detail string
 		switch {
 		case abs <= l.skewMax:
 			detail = fmt.Sprintf("clock of %s is in step with mine, within %s", peer, l.skewMax)
 		case off > 0:
+			state = quorum.StateWarn
 			detail = fmt.Sprintf("clock of %s runs about %s behind mine", peer, abs.Round(100*time.Millisecond))
 		default:
+			state = quorum.StateWarn
 			detail = fmt.Sprintf("clock of %s runs about %s ahead of mine", peer, abs.Round(100*time.Millisecond))
 		}
 		obs = append(obs, quorum.Observation{
 			Observer: l.id,
 			Target:   peer,
 			Check:    "skew",
-			Healthy:  abs <= l.skewMax,
+			State:    state,
 			Detail:   detail,
 			Seen:     now,
 		})

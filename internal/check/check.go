@@ -33,7 +33,12 @@ type Verdict int
 const (
 	// OK means the check passed.
 	OK Verdict = iota
-	// Failed means the check ran and the thing it tests is broken.
+	// Warn means the thing works but is heading somewhere bad: a filling
+	// disk, a busy cpu, a drifting clock. The host is not down and the
+	// verdict must never say it is.
+	Warn
+	// Failed means the check ran and the thing it tests is broken or
+	// unreachable.
 	Failed
 	// NotApplicable means the check cannot run on this platform. It is not
 	// a failure and must never take the lantern down.
@@ -44,6 +49,8 @@ func (v Verdict) String() string {
 	switch v {
 	case OK:
 		return "ok"
+	case Warn:
+		return "warning"
 	case Failed:
 		return "failed"
 	case NotApplicable:

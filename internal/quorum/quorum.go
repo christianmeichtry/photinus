@@ -3,16 +3,29 @@
 // the line between opinion and outage.
 package quorum
 
-import "time"
+import (
+	"sort"
+	"time"
+)
+
+// The three states a subject can be in. A warning is not an outage: the
+// thing still works but is heading somewhere bad, and the words must never
+// confuse the two.
+const (
+	StateUp   = "up"
+	StateWarn = "warn"
+	StateDown = "down"
+)
 
 // An Observation is one lantern's opinion about one check on one host.
 type Observation struct {
-	Observer string    `json:"observer"`
-	Target   string    `json:"target"`
-	Check    string    `json:"check"`
-	Healthy  bool      `json:"healthy"`
-	Detail   string    `json:"detail,omitempty"`
-	Seen     time.Time `json:"seen"`
+	Observer string `json:"observer"`
+	Target   string `json:"target"`
+	Check    string `json:"check"`
+	// State is up, warn, or down.
+	State  string    `json:"state"`
+	Detail string    `json:"detail,omitempty"`
+	Seen   time.Time `json:"seen"`
 }
 
 // Subject names what an observation is about, regardless of who observed it.
@@ -22,12 +35,16 @@ func (o Observation) Subject() string { return o.Check + " " + o.Target }
 type Decision struct {
 	Target string `json:"target"`
 	Check  string `json:"check"`
-	// Down is true when quorum agrees the subject is broken.
-	Down bool `json:"down"`
+	// State is up, warn, or down. Warn and down require quorum unless the
+	// subject is a lantern's own local check.
+	State string `json:"state"`
+	// Detail is the most telling observation's detail line: the authority's
+	// word for a local check, the first complaint otherwise.
+	Detail string `json:"detail,omitempty"`
 	// Authority is true when the subject is a lantern's own local check, so
 	// that lantern's word decided alone and no agreement was needed.
 	Authority bool `json:"authority,omitempty"`
-	// Votes counts lanterns currently reporting the subject broken.
+	// Votes counts lanterns currently reporting the subject warn or down.
 	Votes int `json:"votes"`
 	// Voters counts lanterns with a live observation on the subject.
 	Voters int `json:"voters"`
@@ -53,6 +70,7 @@ func Decide(target, checkName string, obs []Observation, lastKnownSize int, maxA
 	d := Decision{
 		Target:    target,
 		Check:     checkName,
+		State:     StateUp,
 		Needed:    lastKnownSize/2 + 1,
 		SwarmSize: lastKnownSize,
 	}
@@ -74,19 +92,44 @@ func Decide(target, checkName string, obs []Observation, lastKnownSize int, maxA
 		d.Authority = true
 		d.Voters = 1
 		d.Needed = 1
-		if !auth.Healthy {
+		d.State = auth.State
+		d.Detail = auth.Detail
+		if auth.State != StateUp {
 			d.Votes = 1
 		}
-		d.Down = !auth.Healthy
 		return d
 	}
 
+	// Deterministic order, so the chosen detail does not flap between
+	// status calls.
+	ordered := make([]Observation, 0, len(newest))
 	for _, o := range newest {
+		ordered = append(ordered, o)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Observer < ordered[j].Observer })
+
+	sawDown := false
+	for _, o := range ordered {
 		d.Voters++
-		if !o.Healthy {
+		if o.State != StateUp {
 			d.Votes++
+			if o.State == StateDown {
+				sawDown = true
+			}
+			if d.Detail == "" {
+				d.Detail = o.Detail
+			}
 		}
 	}
-	d.Down = d.Votes >= d.Needed
+	if d.Detail == "" && len(ordered) > 0 {
+		d.Detail = ordered[0].Detail
+	}
+	if d.Votes >= d.Needed {
+		if sawDown {
+			d.State = StateDown
+		} else {
+			d.State = StateWarn
+		}
+	}
 	return d
 }

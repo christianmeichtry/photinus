@@ -83,9 +83,16 @@ is broken.
 
 ## Checks (built-in types)
 
-Every check is threshold-based: it produces an observation that is OK or not-OK, never a
-stored number over time. All built-in checks exist; Windows probes for the local ones are
-still on the roadmap (they report "not applicable" there until then).
+Every check is threshold-based: it produces an observation, never a stored number over
+time. All built-in checks exist; Windows probes for the local ones are still on the
+roadmap (they report "not applicable" there until then).
+
+**A warning is not an outage.** Resource checks (disk, cpu, memory, swap, uptime) and
+skew can only WARN when past their threshold: the host is up and its lantern is
+reporting, so the words must never say down. DOWN is reserved for reachability checks
+(tcp, and future ones like http) confirmed by quorum. Notifications follow the same
+split: kinds are "down", "warning", "recovered" (up after down), and "cleared" (up
+after a warning).
 
 | Check | What it tests | Kind |
 |---|---|---|

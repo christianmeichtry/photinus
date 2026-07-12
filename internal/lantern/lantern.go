@@ -118,14 +118,22 @@ func (l *Lantern) flash(ctx context.Context) {
 	own := make([]quorum.Observation, 0, len(l.checks))
 	for _, c := range l.checks {
 		res := c.Run(ctx)
-		if res.Verdict == check.NotApplicable {
+		var state string
+		switch res.Verdict {
+		case check.OK:
+			state = quorum.StateUp
+		case check.Warn:
+			state = quorum.StateWarn
+		case check.Failed:
+			state = quorum.StateDown
+		default:
 			continue
 		}
 		own = append(own, quorum.Observation{
 			Observer: l.id,
 			Target:   c.Target(),
 			Check:    c.Name(),
-			Healthy:  res.Verdict == check.OK,
+			State:    state,
 			Detail:   res.Detail,
 			Seen:     now,
 		})

@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -26,7 +27,14 @@ func (t TCP) Run(ctx context.Context) Result {
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", t.Addr)
 	if err != nil {
-		return Result{Verdict: Failed, Detail: fmt.Sprintf("dialing %s: %v", t.Addr, err)}
+		// The subject line already names the target; keep the detail to
+		// the reason.
+		reason := err.Error()
+		var opErr *net.OpError
+		if errors.As(err, &opErr) && opErr.Err != nil {
+			reason = opErr.Err.Error()
+		}
+		return Result{Verdict: Failed, Detail: fmt.Sprintf("cannot connect: %s", reason)}
 	}
 	conn.Close()
 	return Result{Verdict: OK, Detail: fmt.Sprintf("connected to %s", t.Addr)}

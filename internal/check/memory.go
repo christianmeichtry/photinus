@@ -51,7 +51,7 @@ func (m *Memory) Run(ctx context.Context) Result {
 	pct := u.usedPercent()
 	detail := fmt.Sprintf("memory is %.0f%% used, %s of %s", pct, humanBytes(u.usedBytes), humanBytes(u.totalBytes))
 	if pct > max {
-		return Result{Verdict: Failed, Detail: detail + fmt.Sprintf(", threshold is %.0f%%", max)}
+		return Result{Verdict: Warn, Detail: detail + fmt.Sprintf(", threshold is %.0f%%", max)}
 	}
 	return Result{Verdict: OK, Detail: detail}
 }

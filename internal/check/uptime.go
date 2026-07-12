@@ -38,7 +38,7 @@ func (u *Uptime) Run(ctx context.Context) Result {
 		return Result{Verdict: NotApplicable, Detail: fmt.Sprintf("cannot read uptime: %v", err)}
 	}
 	if up < min {
-		return Result{Verdict: Failed, Detail: fmt.Sprintf("host rebooted %s ago", up.Round(time.Second))}
+		return Result{Verdict: Warn, Detail: fmt.Sprintf("host rebooted %s ago", up.Round(time.Second))}
 	}
 	return Result{Verdict: OK, Detail: fmt.Sprintf("up for %s", up.Round(time.Minute))}
 }

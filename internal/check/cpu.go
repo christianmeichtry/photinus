@@ -41,7 +41,7 @@ func (c *CPU) Run(ctx context.Context) Result {
 		return Result{Verdict: OK, Detail: "cpu measurement warming up, first verdict next flash"}
 	}
 	if pct > max {
-		return Result{Verdict: Failed, Detail: fmt.Sprintf("cpu is %.0f%% busy, threshold is %.0f%%", pct, max)}
+		return Result{Verdict: Warn, Detail: fmt.Sprintf("cpu is %.0f%% busy, threshold is %.0f%%", pct, max)}
 	}
 	return Result{Verdict: OK, Detail: fmt.Sprintf("cpu is %.0f%% busy", pct)}
 }

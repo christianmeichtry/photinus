@@ -238,6 +238,19 @@ reason: observation aging compares peer stamps against the local clock, so a
 lantern drifted beyond maxAge silently loses its vote. The default threshold
 of 5 seconds sits inside the default aging window of 10 seconds.
 
+### Warnings are not outages
+
+A disk at 91% has not taken anything down: the host is up and its lantern is
+the one reporting. Calling that DOWN would train operators to ignore DOWN.
+So subjects have three states. Resource checks and skew can only reach WARN;
+DOWN is reserved for reachability checks confirmed by quorum. The status
+table sorts DOWN above WARN above up, and notifications carry the split as
+kinds: down, warning, recovered (up after down), cleared (up after warning).
+An escalation from warning to down notifies again; the way back down the
+ladder notifies as what it now is. Colors in the status output are
+decoration, never information: everything they say is also in the words, so
+pipes and NO_COLOR lose nothing.
+
 ### Notification: hash election, no protocol
 
 Every lantern detects the same outages, so the problem is not sending a page

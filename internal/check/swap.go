@@ -48,7 +48,7 @@ func (s *Swap) Run(ctx context.Context) Result {
 	pct := 100 * float64(u.usedBytes) / float64(u.totalBytes)
 	detail := fmt.Sprintf("swap is %.0f%% used, %s of %s", pct, humanBytes(u.usedBytes), humanBytes(u.totalBytes))
 	if pct > max {
-		return Result{Verdict: Failed, Detail: detail + fmt.Sprintf(", threshold is %.0f%%", max)}
+		return Result{Verdict: Warn, Detail: detail + fmt.Sprintf(", threshold is %.0f%%", max)}
 	}
 	return Result{Verdict: OK, Detail: detail}
 }

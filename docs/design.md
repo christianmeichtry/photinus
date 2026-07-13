@@ -465,3 +465,19 @@ The panel's mesh also stopped darting in this release: lanterns hold fixed
 constellation spots and entrain their flash phase into unison, which is
 the behavior the project is named for, and the gossip threads between them
 are bowed instead of straight.
+
+## The gate (0.0.10)
+
+A night of fleet work produced two process failures worth more than the
+bugs they let through. A shell pipeline laundered go test's exit status
+through tail, so a red run pushed anyway; and the dev Mac, deep in swap
+with a 92 percent full disk, stalled random test binaries for minutes,
+which read as deadlocks in packages that contain pure functions. Both
+have the same cure: production rolls only from a commit the gate action
+calls green, on clean runners. The gate is .github/workflows/gate.yml
+(gofmt, vet, race tests in series, panel and worker script parsing, and
+a cross-compile of every fleet platform), mirrored locally by
+scripts/preflight.sh. The relight procedure lives in scripts/relight.sh
+now too: it earned its scars (a pgrep that matched its own nohup wrapper
+and killed the wrapper instead of the lantern) and belongs under review
+like everything else.

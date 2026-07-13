@@ -3,9 +3,11 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/christianmeichtry/photinus/internal/lantern"
+	"github.com/christianmeichtry/photinus/internal/version"
 )
 
 func TestStatusHandlerAuthAndCORS(t *testing.T) {
@@ -72,5 +74,23 @@ func TestStatusHandlerServesShell(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("unknown path code = %d, want 404", rec.Code)
+	}
+}
+
+// TestServiceWorkerCarriesRelease pins the lesson of 0.0.8: a service
+// worker whose bytes never change between releases leaves every browser on
+// the shell it first cached, forever. The cache name must carry the
+// release, stamped in at serve time.
+func TestServiceWorkerCarriesRelease(t *testing.T) {
+	lan := lantern.New(lantern.Config{ID: "l1"})
+	h := statusHandler("", lan)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/sw.js", nil))
+	body := rr.Body.String()
+	if strings.Contains(body, "@RELEASE@") {
+		t.Error("sw.js went out with its placeholder unstamped")
+	}
+	if !strings.Contains(body, "photinus-shell-"+version.Release) {
+		t.Errorf("sw.js cache name does not carry release %s", version.Release)
 	}
 }

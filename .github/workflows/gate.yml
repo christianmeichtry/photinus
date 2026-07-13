@@ -1,0 +1,49 @@
+# The gate. A fleet roll starts from a commit this workflow calls green,
+# never from a laptop's word alone: the night bespin ran out of swap, its
+# local test runs stalled at random and a broken pipeline let a red run
+# slip through to a push. Clean runners do not have nights like that.
+name: gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt prints nothing
+        run: test -z "$(gofmt -l .)"
+      - name: vet
+        run: go vet ./...
+      - name: tests with the race detector, packages in series
+        run: go test -race -count=1 -p 1 -timeout 300s ./...
+      - name: the panel and worker scripts parse
+        run: |
+          python3 -c "import re; open('/tmp/panel.js','w').write(re.search(r'<script>(.*?)</script>', open('cmd/photinus/panel.html').read(), re.S).group(1))"
+          node --check /tmp/panel.js
+          node --check cmd/photinus/sw.js
+
+  cross-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: every platform a lantern might run on
+        run: |
+          set -eu
+          for t in linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64; do
+            GOOS=${t%/*} GOARCH=${t#*/} go build ./...
+            echo "built $t"
+          done

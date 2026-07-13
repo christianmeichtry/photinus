@@ -159,3 +159,72 @@ func parseProcStatCPU(line string) (busy, total uint64, err error) {
 	}
 	return busy, total, nil
 }
+
+// newNetProbe measures the traffic rate on the default-route interface
+// from /proc/net/dev counter deltas between flashes. The first call only
+// takes a baseline, and a changed default route or a counter reset starts
+// a fresh one instead of reporting a nonsense burst.
+func newNetProbe() func() (float64, float64, string, bool, error) {
+	var prevRx, prevTx uint64
+	var prevAt time.Time
+	var prevIface string
+	return func() (float64, float64, string, bool, error) {
+		iface, err := defaultRouteIface()
+		if err != nil {
+			return 0, 0, "", false, err
+		}
+		rx, tx, err := readNetDev(iface)
+		if err != nil {
+			return 0, 0, "", false, err
+		}
+		now := time.Now()
+		usable := prevIface == iface && !prevAt.IsZero() && rx >= prevRx && tx >= prevTx
+		dt := now.Sub(prevAt).Seconds()
+		defer func() { prevRx, prevTx, prevAt, prevIface = rx, tx, now, iface }()
+		if !usable || dt <= 0 {
+			return 0, 0, iface, false, nil
+		}
+		return float64(rx-prevRx) / dt, float64(tx-prevTx) / dt, iface, true, nil
+	}
+}
+
+// defaultRouteIface names the interface carrying the default route.
+func defaultRouteIface() (string, error) {
+	data, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return "", fmt.Errorf("reading /proc/net/route: %w", err)
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines[1:] {
+		f := strings.Fields(line)
+		if len(f) >= 2 && f[1] == "00000000" {
+			return f[0], nil
+		}
+	}
+	return "", fmt.Errorf("no default route in /proc/net/route")
+}
+
+func readNetDev(iface string) (rx, tx uint64, err error) {
+	data, err := os.ReadFile("/proc/net/dev")
+	if err != nil {
+		return 0, 0, fmt.Errorf("reading /proc/net/dev: %w", err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		name, rest, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(name) != iface {
+			continue
+		}
+		f := strings.Fields(rest)
+		if len(f) < 9 {
+			return 0, 0, fmt.Errorf("parsing /proc/net/dev: short line for %s", iface)
+		}
+		if rx, err = strconv.ParseUint(f[0], 10, 64); err != nil {
+			return 0, 0, fmt.Errorf("parsing /proc/net/dev: %w", err)
+		}
+		if tx, err = strconv.ParseUint(f[8], 10, 64); err != nil {
+			return 0, 0, fmt.Errorf("parsing /proc/net/dev: %w", err)
+		}
+		return rx, tx, nil
+	}
+	return 0, 0, fmt.Errorf("interface %s not in /proc/net/dev", iface)
+}

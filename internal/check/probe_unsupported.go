@@ -15,3 +15,7 @@ func readSwapUsage() (swapUsage, error)       { return swapUsage{}, errUnsupport
 func newCPUProbe() func() (float64, bool, error) {
 	return func() (float64, bool, error) { return 0, false, errUnsupported }
 }
+
+func newNetProbe() func() (float64, float64, string, bool, error) {
+	return func() (float64, float64, string, bool, error) { return 0, 0, "", false, errUnsupported }
+}

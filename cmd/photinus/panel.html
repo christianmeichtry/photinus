@@ -201,10 +201,15 @@ function drawField(t){
   const lineAlpha = reduced ? .07 : .05 + .07*beat;
   for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++){
     const a=pts[i], b=pts[j], anyDead = a.dead||b.dead;
+    // Bow each gossip path gently to one side, a fixed side and depth per
+    // pair, so the web reads as woven threads instead of a wire polygon.
+    const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
+    const bow = ((i*31+j*17)%2 ? 1 : -1) * Math.min(30, len*.16);
+    const cx=(a.x+b.x)/2 - dy/len*bow, cy=(a.y+b.y)/2 + dx/len*bow;
     fctx.beginPath();
     fctx.strokeStyle = anyDead ? "rgba(224,106,80,.10)" : "rgba(232,226,210,"+lineAlpha.toFixed(3)+")";
     fctx.lineWidth = 1;
-    fctx.moveTo(a.x,a.y); fctx.lineTo(b.x,b.y); fctx.stroke();
+    fctx.moveTo(a.x,a.y); fctx.quadraticCurveTo(cx,cy,b.x,b.y); fctx.stroke();
   }
   for (const [name,f] of flies){
     // The only movement left: sliding to a new constellation spot when

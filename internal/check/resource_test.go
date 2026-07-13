@@ -123,6 +123,7 @@ func TestProbesOnThisPlatform(t *testing.T) {
 		&CPU{Host: "l1"},
 		&Memory{Host: "l1"},
 		&Swap{Host: "l1"},
+		&Net{Host: "l1"},
 	}
 	for _, c := range checks {
 		res := c.Run(ctx)
@@ -132,10 +133,46 @@ func TestProbesOnThisPlatform(t *testing.T) {
 		t.Logf("%-8s %-14s %s", c.Name(), res.Verdict, res.Detail)
 	}
 
-	// The cpu probe needs a second sample on platforms that measure deltas.
+	// The cpu and net probes need a second sample on platforms that
+	// measure deltas.
 	cpu := &CPU{Host: "l1"}
 	cpu.Run(ctx)
 	time.Sleep(50 * time.Millisecond)
 	res := cpu.Run(ctx)
 	t.Logf("%-8s %-14s %s (second sample)", cpu.Name(), res.Verdict, res.Detail)
+	netc := &Net{Host: "l1"}
+	netc.Run(ctx)
+	time.Sleep(50 * time.Millisecond)
+	res = netc.Run(ctx)
+	t.Logf("%-8s %-14s %s (second sample)", netc.Name(), res.Verdict, res.Detail)
+}
+
+func TestNetRate(t *testing.T) {
+	run := func(rx, tx float64, ready bool, max float64) Result {
+		n := &Net{Host: "l1", Max: max, probe: func() (float64, float64, string, bool, error) {
+			return rx, tx, "eth0", ready, nil
+		}}
+		return n.Run(context.Background())
+	}
+	got := run(2<<20, 100<<10, true, 0)
+	if got.Verdict != OK || !strings.Contains(got.Detail, "eth0") || !strings.Contains(got.Detail, "in") {
+		t.Errorf("quiet net: got %s %q, want OK naming the interface and both directions", got.Verdict, got.Detail)
+	}
+	// 20 MB/s each way is about 335 Mbit/s combined, past a 100 Mbit/s limit.
+	if got := run(20<<20, 20<<20, true, 100); got.Verdict != Warn {
+		t.Errorf("busy net with a threshold: verdict = %s, want %s (%s)", got.Verdict, Warn, got.Detail)
+	}
+	if got := run(20<<20, 20<<20, true, 0); got.Verdict != OK {
+		t.Errorf("busy net without a threshold: verdict = %s, want %s, the rate is information", got.Verdict, OK)
+	}
+	got = run(0, 0, false, 0)
+	if got.Verdict != OK || !strings.Contains(got.Detail, "warming up") {
+		t.Errorf("first sample: got %s %q, want OK about warming up", got.Verdict, got.Detail)
+	}
+	n := &Net{Host: "l1", probe: func() (float64, float64, string, bool, error) {
+		return 0, 0, "", false, errUnsupported
+	}}
+	if got := n.Run(context.Background()); got.Verdict != NotApplicable {
+		t.Errorf("unsupported platform: verdict = %s, want %s", got.Verdict, NotApplicable)
+	}
 }

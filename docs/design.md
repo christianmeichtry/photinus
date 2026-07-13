@@ -447,3 +447,21 @@ wrong key is refused with a plain reason in its log.
 5. More notification channels as additional Senders, mail first.
 6. How much history a lantern keeps, so status can answer "when did this
    start" without becoming a database.
+
+## The net check (0.0.9)
+
+Network rate joined the default local checks. It measures the byte counters
+of the default-route interface between flashes, the same delta pattern as
+the cpu probe, and reports "net is X in, Y out on eth0" as an authority
+observation. There is deliberately no default threshold: nobody knows a
+universal number for "too much traffic", but an operator glancing at the
+panel knows their own boxes' normal at a glance, and that is what the check
+is for, spotting the box that suddenly moves ten times its usual. A
+`-watch net:200` names a combined Mbit/s limit and makes it warn. Linux
+reads /proc/net/dev, macOS asks the bundled route and netstat tools,
+Windows reports not applicable until its probe lands.
+
+The panel's mesh also stopped darting in this release: lanterns hold fixed
+constellation spots and entrain their flash phase into unison, which is
+the behavior the project is named for, and the gossip threads between them
+are bowed instead of straight.

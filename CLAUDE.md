@@ -87,8 +87,8 @@ Every check is threshold-based: it produces an observation, never a stored numbe
 time. All built-in checks exist; Windows probes for the local ones are still on the
 roadmap (they report "not applicable" there until then).
 
-**A warning is not an outage.** Resource checks (disk, cpu, memory, swap, uptime) and
-skew can only WARN when past their threshold: the host is up and its lantern is
+**A warning is not an outage.** Resource checks (disk, cpu, memory, swap, uptime, net)
+and skew can only WARN when past their threshold: the host is up and its lantern is
 reporting, so the words must never say down. DOWN is reserved for reachability checks
 (tcp, and future ones like http) confirmed by quorum. Notifications follow the same
 split: kinds are "down", "warning", "recovered" (up after down), and "cleared" (up
@@ -104,17 +104,18 @@ after a warning).
 | **cpu** | CPU utilization percent (short rolling average) against a threshold | local |
 | **memory** | RAM utilization percent against a threshold | local |
 | **swap** | swap/pagefile utilization percent, an early warning before OOM | local |
+| **net** | traffic rate on the default-route interface; reports always, warns only past an optional Mbit/s limit | local |
 | **skew** | clock drift between this lantern and the swarm's flashes | relational |
 | **lantern** | every known peer's liveness, from membership, automatic | relational |
 
 **The standard local checks run by default** (`disk:/`, `cpu`, `memory`, `swap`,
-`uptime`): one binary and a seed gives a fully monitored host. `-watch` adds more
+`uptime`, `net`): one binary and a seed gives a fully monitored host. `-watch` adds more
 (extra disks, tcp targets) or overrides a default's threshold by naming it;
 `-defaults=false` opts a box out. `skew` and `lantern` need no flags at all: skew is
 measured from flashes, and the lantern check is the mesh watching itself, membership
 turned into quorum-decided subjects so a dead host pages with zero configuration.
 
-Resource checks (`uptime`, `disk`, `cpu`, `memory`, `swap`) are *local* facts: rule 4
+Resource checks (`uptime`, `disk`, `cpu`, `memory`, `swap`, `net`) are *local* facts: rule 4
 applies, a lantern is the sole authority on its own resource checks and gossips them as
 observations. In code that means their observations target the lantern's own ID, and
 quorum treats observer-equals-target as authoritative: the host's own word decides, no

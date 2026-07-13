@@ -5,7 +5,10 @@ package check
 import (
 	"encoding/binary"
 	"fmt"
+	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -97,4 +100,89 @@ func newCPUProbe() func() (float64, bool, error) {
 		}
 		return pct, true, nil
 	}
+}
+
+// newNetProbe measures the traffic rate on the default-route interface
+// from netstat counter deltas between flashes. macOS keeps these counters
+// behind mach APIs, so the bundled route and netstat tools are the
+// dependency-free way at them.
+func newNetProbe() func() (float64, float64, string, bool, error) {
+	var prevRx, prevTx uint64
+	var prevAt time.Time
+	var prevIface string
+	return func() (float64, float64, string, bool, error) {
+		iface, err := defaultRouteIface()
+		if err != nil {
+			return 0, 0, "", false, err
+		}
+		rx, tx, err := readNetstat(iface)
+		if err != nil {
+			return 0, 0, "", false, err
+		}
+		now := time.Now()
+		usable := prevIface == iface && !prevAt.IsZero() && rx >= prevRx && tx >= prevTx
+		dt := now.Sub(prevAt).Seconds()
+		defer func() { prevRx, prevTx, prevAt, prevIface = rx, tx, now, iface }()
+		if !usable || dt <= 0 {
+			return 0, 0, iface, false, nil
+		}
+		return float64(rx-prevRx) / dt, float64(tx-prevTx) / dt, iface, true, nil
+	}
+}
+
+// defaultRouteIface names the interface carrying the default route.
+func defaultRouteIface() (string, error) {
+	out, err := exec.Command("route", "-n", "get", "default").Output()
+	if err != nil {
+		return "", fmt.Errorf("asking route for the default interface: %w", err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), ":"); ok && k == "interface" {
+			return strings.TrimSpace(v), nil
+		}
+	}
+	return "", fmt.Errorf("no interface in route's default answer")
+}
+
+// readNetstat takes the link-level byte counters for one interface. Fields
+// are matched to the header by position and rows that do not line up with
+// the header (an interface without a hardware address) are skipped.
+func readNetstat(iface string) (rx, tx uint64, err error) {
+	out, err := exec.Command("netstat", "-ibn", "-I", iface).Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("asking netstat about %s: %w", iface, err)
+	}
+	lines := strings.Split(string(out), "\n")
+	if len(lines) < 2 {
+		return 0, 0, fmt.Errorf("netstat said nothing about %s", iface)
+	}
+	head := strings.Fields(lines[0])
+	ib, ob := -1, -1
+	for i, h := range head {
+		switch h {
+		case "Ibytes":
+			ib = i
+		case "Obytes":
+			ob = i
+		}
+	}
+	if ib < 0 || ob < 0 {
+		return 0, 0, fmt.Errorf("netstat output has no byte columns")
+	}
+	for _, line := range lines[1:] {
+		if !strings.Contains(line, "<Link") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) != len(head) {
+			continue
+		}
+		rxv, err1 := strconv.ParseUint(f[ib], 10, 64)
+		txv, err2 := strconv.ParseUint(f[ob], 10, 64)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		return rxv, txv, nil
+	}
+	return 0, 0, fmt.Errorf("no link-level counters for %s", iface)
 }

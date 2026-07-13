@@ -44,11 +44,11 @@ func runCmd(args []string) error {
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
 	panel := fs.String("panel", "", "also serve the read-only web status panel on this extra address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
 	panelToken := fs.String("panel-token", os.Getenv("PHOTINUS_PANEL_TOKEN"), "bearer token guarding status data; when set, the gossip port also answers the panel and /status.json (app and browser reach the swarm through the one open port). Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_PANEL_TOKEN")
-	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime) without naming them")
+	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime, net) without naming them")
 	var seeds, watches, expect stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
 	fs.Var(&expect, "expect", "name of a lantern that must exist; a declared box that is down or never joins is reported down instead of vanishing (repeatable, same list on every box)")
-	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration]; naming a default check overrides it")
+	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration], net[:mbit]; naming a default check overrides it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func runCmd(args []string) error {
 	if *defaults {
 		// The named checks came first, so a -watch that names a default
 		// subject (say disk:/ with its own threshold) wins over it.
-		std, err := parseWatches(*id, []string{"disk:/", "cpu", "memory", "swap", "uptime"})
+		std, err := parseWatches(*id, []string{"disk:/", "cpu", "memory", "swap", "uptime", "net"})
 		if err != nil {
 			return err
 		}
@@ -256,8 +256,18 @@ func parseWatches(id string, watches []string) ([]check.Check, error) {
 				}
 			}
 			checks = append(checks, &check.Uptime{Host: id, Min: min})
+		case "net":
+			var mbit float64
+			if rest != "" {
+				v, err := strconv.ParseFloat(rest, 64)
+				if err != nil || v <= 0 {
+					return nil, fmt.Errorf("cannot watch %q: %q is not a rate in Mbit/s", w, rest)
+				}
+				mbit = v
+			}
+			checks = append(checks, &check.Net{Host: id, Max: mbit})
 		default:
-			return nil, fmt.Errorf("cannot watch %q: known checks are tcp, disk, cpu, memory, swap, uptime", w)
+			return nil, fmt.Errorf("cannot watch %q: known checks are tcp, http, cert, disk, cpu, memory, swap, uptime, net", w)
 		}
 	}
 	return checks, nil

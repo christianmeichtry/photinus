@@ -156,19 +156,34 @@ function trimDetail(s){
 }
 
 // The landing page metaphor, but truthful: every firefly is a real box.
-// Lit ones drift and flash in unison, ailing ones flicker dim and erratic,
-// dead ones sit still in ember, unknown ones are hollow ghosts.
+// The flies do not fly: each lantern holds a fixed constellation spot,
+// deterministic from its name, and the animation is the light. Lit ones
+// start on their own beat and entrain into unison, the thing the species
+// is named for. Ailing ones cannot hold the rhythm and flash off-beat and
+// dim, dead ones sit ember and never pulse, unknowns are hollow ghosts.
+// Position only changes when the swarm itself changes.
 const field = $("field"), fctx = field.getContext("2d");
 const flies = new Map();
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const BEAT = 2.6; // rad/s, the swarm's shared flash rhythm
+function hash01(s){ let h = 0; for (const c of s) h = (h*31 + c.charCodeAt(0)) | 0; return (h>>>0)/4294967295; }
 function syncFlies(states){
   const seen = new Set();
-  for (const st of states){
+  const sorted = [...states].sort((a,b) => a.name < b.name ? -1 : 1);
+  sorted.forEach((st, i) => {
     seen.add(st.name);
+    const n = sorted.length;
+    const tx = n === 1 ? .5 : .08 + .84*(i + .5)/n;
+    const ty = .3 + .42*hash01(st.name);
     let f = flies.get(st.name);
-    if (!f){ f = {x:.08+Math.random()*.84, y:.2+Math.random()*.5, vx:(Math.random()-.5)*.001, vy:(Math.random()-.5)*.0007, jit:Math.random()*6.28}; flies.set(st.name, f); }
+    if (!f){
+      // Born out of step: a fresh phase offset that the beat will reel in.
+      f = {x:tx, y:ty, ph:(Math.random()-.5)*2.2, jit:hash01(st.name)*6.28};
+      flies.set(st.name, f);
+    }
+    f.tx = tx; f.ty = ty;
     f.mode = st.mode;
-  }
+  });
   for (const k of [...flies.keys()]) if (!seen.has(k)) flies.delete(k);
 }
 function drawField(t){
@@ -177,52 +192,41 @@ function drawField(t){
   fctx.setTransform(dpr,0,0,dpr,0,0);
   fctx.clearRect(0,0,W,H);
   const tt = t/1000;
+  // The swarm's shared beat, and how bright it is right now: the mesh
+  // lines breathe with it, so each synchronized flash washes over the web.
+  const beat = Math.pow(Math.max(0, Math.sin(tt*BEAT)), 4);
   // Faint mesh lines first, under the flies: the gossip paths. Links to a
-  // dead box fade toward ember.
+  // dead box fade toward ember and do not carry the beat.
   const pts = [...flies.values()].map(f => ({x:f.x*W, y:f.y*(H-30)+8, dead:f.mode==="dead"}));
+  const lineAlpha = reduced ? .07 : .05 + .07*beat;
   for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++){
     const a=pts[i], b=pts[j], anyDead = a.dead||b.dead;
     fctx.beginPath();
-    fctx.strokeStyle = anyDead ? "rgba(224,106,80,.10)" : "rgba(232,226,210,.07)";
+    fctx.strokeStyle = anyDead ? "rgba(224,106,80,.10)" : "rgba(232,226,210,"+lineAlpha.toFixed(3)+")";
     fctx.lineWidth = 1;
     fctx.moveTo(a.x,a.y); fctx.lineTo(b.x,b.y); fctx.stroke();
   }
   for (const [name,f] of flies){
-    if (f.mode==="dead"){
-      // Dead fireflies fall and lie on the ground.
-      const ground = .86;
-      if (reduced){ f.y = ground; f.vx = f.vy = 0; }
-      else if (f.y < ground){
-        f.vy = (f.vy||0) + .00045;
-        f.y = Math.min(ground, f.y + f.vy);
-        f.x += (f.vx||0)*.3;
-      } else { f.vx = f.vy = 0; f.y = ground; }
-    }
-    if (!reduced && f.mode!=="dead"){
-      // Insect motion: sudden darts that glide out, plus a constant
-      // nervous jitter, instead of smooth ballistic drift.
-      if (Math.random() < .015){
-        const a = Math.random()*6.283, sp = .001 + Math.random()*.0022;
-        f.vx = Math.cos(a)*sp; f.vy = Math.sin(a)*sp;
-      }
-      f.vx *= .984; f.vy *= .984;
-      // Darts glide out over a slow woven wander, so the path curves like
-      // a living thing instead of a billiard ball.
-      f.x += f.vx + Math.sin(tt*.6 + f.jit)*.0005 + (Math.random()-.5)*.0006;
-      f.y += f.vy + Math.cos(tt*.45 + f.jit*1.7)*.0005 + (Math.random()-.5)*.0006;
-      if (f.x < .04 || f.x > .96) f.vx *= -1;
-      if (f.y < .06 || f.y > .88) f.vy *= -1;
-      f.x = Math.max(.04, Math.min(.96, f.x));
-      f.y = Math.max(.06, Math.min(.88, f.y));
+    // The only movement left: sliding to a new constellation spot when
+    // the swarm's roster changes.
+    f.x += (f.tx - f.x)*.03;
+    f.y += (f.ty - f.y)*.03;
+    if (f.mode!=="worse"){
+      // Entrainment: whatever phase this fly joined on decays toward the
+      // swarm's beat over about twenty seconds. Watchable on page load.
+      f.ph *= .9988;
+    } else if (!reduced){
+      // An ailing box cannot hold the rhythm: its phase wanders.
+      f.ph += (Math.random()-.5)*.02;
     }
     const x = f.x*W, y = f.y*(H-30)+8;
     let color = "#FFC24B", alpha, r = 4.5;
     if (f.mode==="dead"){ color = "#E06A50"; alpha = .95; }
     else if (f.mode==="ghost"){ color = "#8FA5A3"; alpha = .35; }
     else if (f.mode==="worse"){
-      alpha = .18 + .4*Math.pow(Math.max(0, Math.sin(tt*3.3 + f.jit)), 6) + (Math.random() < .02 ? .3 : 0);
+      alpha = reduced ? .55 : .16 + .42*Math.pow(Math.max(0, Math.sin((tt + f.ph)*BEAT + f.jit)), 6);
     } else {
-      alpha = reduced ? .9 : .22 + .78*Math.pow(Math.max(0, Math.sin(tt*2.6)), 4);
+      alpha = reduced ? .9 : .22 + .78*Math.pow(Math.max(0, Math.sin((tt + f.ph)*BEAT)), 4);
     }
     fctx.beginPath();
     fctx.globalAlpha = Math.min(1, alpha);
@@ -256,6 +260,9 @@ distroLogos.raspbian = distroLogos.ubuntu;
 // keyed so a change is a change, not the whole board glitching on first load.
 let lastState = new Map();
 function render(st){
+  // A lantern with nothing to report yet serves subjects as null; that is
+  // an empty board, not a dead door.
+  st.subjects = st.subjects || [];
   const nowState = new Map();
   const mark = (key, token) => {
     const changed = lastState.has(key) && lastState.get(key) !== token;

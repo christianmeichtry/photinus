@@ -169,3 +169,30 @@ func TestPacedChecksRunOnTheirOwnCadence(t *testing.T) {
 		t.Errorf("paced observation missing or without TTL: %+v", o)
 	}
 }
+
+func TestSyncStateRoundTrip(t *testing.T) {
+	now := time.Now().UTC()
+	l1 := New(Config{ID: "l1"})
+	mine := quorum.Observation{Observer: "l1", Target: "l1", Check: "disk:/", State: quorum.StateWarn, Seen: now}
+	heard := quorum.Observation{Observer: "l3", Target: "db:5432", Check: "tcp", State: quorum.StateDown, Seen: now}
+	l1.store[storeKey(mine)] = mine
+	l1.store[storeKey(heard)] = heard
+
+	l2 := New(Config{ID: "l2"})
+	l2.ReceiveFlash(l1.SyncState())
+	if len(l2.store) != 2 {
+		t.Fatalf("merged %d observations from a state sync, want 2", len(l2.store))
+	}
+	if got := l2.store[storeKey(heard)]; got.State != quorum.StateDown {
+		t.Errorf("relayed observation lost in sync: %+v", got)
+	}
+
+	// A sync must not let a peer overwrite what the receiver knows about
+	// itself: l1's view of l2 travels, l2's own word stays its own.
+	imp := quorum.Observation{Observer: "l2", Target: "l2", Check: "disk:/", State: quorum.StateDown, Seen: now}
+	l1.store[storeKey(imp)] = imp
+	l2.ReceiveFlash(l1.SyncState())
+	if _, ok := l2.store[storeKey(imp)]; ok {
+		t.Error("a state sync smuggled in an observation claiming to be the receiver's own")
+	}
+}

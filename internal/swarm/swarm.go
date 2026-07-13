@@ -68,6 +68,7 @@ type Swarm struct {
 
 	mu       sync.Mutex
 	onFlash  func([]byte)
+	state    func() []byte
 	everSeen map[string]struct{}
 	expected map[string]struct{}
 
@@ -187,8 +188,15 @@ func Join(cfg Config) (*Swarm, error) {
 	}
 	s.ml = ml
 	s.queue = &memberlist.TransmitLimitedQueue{
-		NumNodes:       ml.NumMembers,
-		RetransmitMult: 3,
+		NumNodes: ml.NumMembers,
+		// Each queued flash chunk is transmitted RetransmitMult *
+		// log10(N+1) times, each time to one random peer. At 3 that is
+		// three sends into a swarm of five: one peer is structurally left
+		// out of every chunk, and five unlucky rounds in a row age the
+		// observation out on that peer, which showed up as random "?"
+		// flickers on the panel. Four sends cover every peer of a small
+		// swarm; push/pull state sync below repairs anything still lost.
+		RetransmitMult: 4,
 	}
 	if cfg.Key != "" {
 		logger.Printf("gossip is encrypted, only lanterns holding the same key can join")
@@ -227,6 +235,17 @@ func (s *Swarm) SetOnFlash(fn func(payload []byte)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onFlash = fn
+}
+
+// SetState installs the anti-entropy source: a snapshot of everything this
+// lantern currently believes, in flash envelope form. memberlist ships it
+// to one random peer during every periodic push/pull sync, and the peer
+// merges it like any flash. This is the repair path for gossip packets
+// lost on the wire, and it hands a late joiner the full picture at once.
+func (s *Swarm) SetState(fn func() []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state = fn
 }
 
 // Members lists the lanterns currently believed alive, including this one.
@@ -374,8 +393,33 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 	return d.s.queue.GetBroadcasts(overhead, limit)
 }
 
-func (d *delegate) LocalState(join bool) []byte            { return nil }
-func (d *delegate) MergeRemoteState(buf []byte, join bool) {}
+// LocalState and MergeRemoteState ride memberlist's periodic push/pull
+// sync (TCP, full state, one random peer per period). Gossip packets are
+// best-effort UDP, so an unlucky chunk can miss a peer several rounds in a
+// row; this exchange repairs those gaps and seeds late joiners instantly.
+// The payload is an ordinary flash envelope, so merging is the same
+// newest-wins path every flash takes, impersonation guard included.
+func (d *delegate) LocalState(join bool) []byte {
+	d.s.mu.Lock()
+	fn := d.s.state
+	d.s.mu.Unlock()
+	if fn == nil {
+		return nil
+	}
+	return fn()
+}
+
+func (d *delegate) MergeRemoteState(buf []byte, join bool) {
+	if len(buf) == 0 {
+		return
+	}
+	d.s.mu.Lock()
+	fn := d.s.onFlash
+	d.s.mu.Unlock()
+	if fn != nil {
+		fn(buf)
+	}
+}
 
 // events keeps the ever-seen ledger that LastKnownSize reads.
 type events struct{ s *Swarm }

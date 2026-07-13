@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/christianmeichtry/photinus/internal/lantern"
+	"github.com/christianmeichtry/photinus/internal/version"
 )
 
 //go:embed panel.html manifest.json sw.js icon-180.png icon-192.png icon-512.png
@@ -35,7 +37,14 @@ func statusHandler(token string, lan *lantern.Lantern) http.Handler {
 		})
 	}
 	static("manifest.json", "application/manifest+json")
-	static("sw.js", "text/javascript")
+	// The worker's cache name carries the release, so a browser that cached
+	// an older panel sees a byte-different worker after an upgrade and
+	// replaces its shell instead of serving the old one forever.
+	swJS := bytes.ReplaceAll(mustAsset("sw.js"), []byte("@RELEASE@"), []byte(version.Release))
+	mux.HandleFunc("/sw.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript")
+		w.Write(swJS)
+	})
 	static("icon-180.png", "image/png")
 	static("icon-192.png", "image/png")
 	static("icon-512.png", "image/png")

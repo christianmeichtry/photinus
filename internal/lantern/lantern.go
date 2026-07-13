@@ -96,6 +96,26 @@ func (l *Lantern) AttachSwarm(s *swarm.Swarm) {
 	l.sw = s
 	l.mu.Unlock()
 	s.SetOnFlash(l.ReceiveFlash)
+	s.SetState(l.SyncState)
+}
+
+// SyncState snapshots everything this lantern currently believes, its own
+// observations and everything heard, as one flash envelope. It feeds the
+// swarm's push/pull anti-entropy: observations a peer missed on the wire
+// arrive here at the latest, and a late joiner gets the full picture
+// without waiting out every check's cadence.
+func (l *Lantern) SyncState() []byte {
+	l.mu.Lock()
+	obs := make([]quorum.Observation, 0, len(l.store))
+	for _, o := range l.store {
+		obs = append(obs, o)
+	}
+	l.mu.Unlock()
+	payload, err := json.Marshal(envelope{V: flashV, Obs: obs})
+	if err != nil {
+		return nil
+	}
+	return payload
 }
 
 // Run flashes on every interval until the context ends. It blocks.

@@ -189,7 +189,9 @@ function syncFlies(states){
     // stays under a third of a seat, which keeps neighbors apart.
     const seat = 2*Math.PI/n;
     f.ang = -Math.PI/2 + i*seat + (hash01(st.name) - .5)*seat*.6;
-    f.rad = n === 1 ? 0 : 1 + (hash01(st.name + "r") - .5)*.38;
+    // Radius wanders wider for spread, but never below .78: a node that
+    // dips too far inward folds the outline into sharp angles.
+    f.rad = n === 1 ? 0 : .78 + hash01(st.name + "r")*.42;
     f.mode = st.mode;
   });
   for (const k of [...flies.keys()]) if (!seen.has(k)) flies.delete(k);
@@ -208,10 +210,14 @@ function drawField(t){
   // Seat every fly on the ring first, easing toward it, so the chords
   // below share exact positions with the dots. Position only moves when
   // the swarm's roster changes.
-  const R = Math.min(W, H - 30)/2 - 30;
+  // A gentle ellipse rather than a strict circle: it spreads across the
+  // field's width, capped at 1.6 to 1 so the shape stays round-ish and
+  // its ends never sharpen into points.
+  const Ry = (H - 30)/2 - 34;
+  const Rx = Math.min(W/2 - 60, Ry*1.6);
   for (const f of flies.values()){
-    const tx = W/2 + f.rad*R*Math.cos(f.ang);
-    const ty = 8 + (H - 30)/2 + f.rad*R*Math.sin(f.ang);
+    const tx = W/2 + f.rad*Rx*Math.cos(f.ang);
+    const ty = 8 + (H - 30)/2 + f.rad*Ry*Math.sin(f.ang);
     if (f.px === undefined){ f.px = tx; f.py = ty; }
     f.px += (tx - f.px)*.03;
     f.py += (ty - f.py)*.03;

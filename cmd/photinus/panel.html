@@ -31,7 +31,7 @@
     @keyframes flash{0%,100%{opacity:.35}50%{opacity:1}}
   }
   h1{font-size:1.2rem;font-weight:600}
-  #field{display:block;width:100%;height:260px;margin:0 0 1rem;border-radius:8px;background:radial-gradient(120% 90% at 50% 10%, rgba(16,40,48,.55), transparent 70%)}
+  #field{display:block;width:100%;height:400px;margin:0 0 1rem;border-radius:8px;background:radial-gradient(120% 90% at 50% 10%, rgba(16,40,48,.55), transparent 70%)}
   .summary{font-family:var(--mono);font-size:.88rem;color:var(--dim);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
   .summary b{font-weight:600;color:var(--ink)}
   .pill{display:inline-block;padding:.12rem .65rem;border-radius:99px;font-weight:700;font-size:.82rem}
@@ -173,20 +173,18 @@ function syncFlies(states){
   sorted.forEach((st, i) => {
     seen.add(st.name);
     const n = sorted.length;
-    const tx = n === 1 ? .5 : .08 + .84*(i + .5)/n;
-    // The swarm stands on a gentle dome, a landing page's necklace of
-    // nodes rather than a jagged skyline or a flat row: a smooth arc
-    // over the width, with a whisper of per-name variation so it stays
-    // organic without breaking the curve.
-    const t = (tx - .5)/.42;
-    const ty = .66 - .34*(1 - t*t) + (hash01(st.name) - .5)*.08;
+    // The swarm sits on a ring inscribed in the field, straight gossip
+    // chords across it: a round constellation, not a skyline. Each
+    // lantern gets a seat by sorted name, starting at the top, with a
+    // whisper of per-name radius so the ring stays organic.
     let f = flies.get(st.name);
     if (!f){
       // Born out of step: a fresh phase offset that the beat will reel in.
-      f = {x:tx, y:ty, ph:(Math.random()-.5)*2.2, jit:hash01(st.name)*6.28};
+      f = {ph:(Math.random()-.5)*2.2, jit:hash01(st.name)*6.28};
       flies.set(st.name, f);
     }
-    f.tx = tx; f.ty = ty;
+    f.ang = -Math.PI/2 + 2*Math.PI*(i/n);
+    f.rad = n === 1 ? 0 : 1 + (hash01(st.name) - .5)*.12;
     f.mode = st.mode;
   });
   for (const k of [...flies.keys()]) if (!seen.has(k)) flies.delete(k);
@@ -202,7 +200,18 @@ function drawField(t){
   const beat = Math.pow(Math.max(0, Math.sin(tt*BEAT)), 4);
   // Faint mesh lines first, under the flies: the gossip paths. Links to a
   // dead box fade toward ember and do not carry the beat.
-  const pts = [...flies.values()].map(f => ({x:f.x*W, y:f.y*(H-30)+8, dead:f.mode==="dead"}));
+  // Seat every fly on the ring first, easing toward it, so the chords
+  // below share exact positions with the dots. Position only moves when
+  // the swarm's roster changes.
+  const R = Math.min(W, H - 30)/2 - 30;
+  for (const f of flies.values()){
+    const tx = W/2 + f.rad*R*Math.cos(f.ang);
+    const ty = 8 + (H - 30)/2 + f.rad*R*Math.sin(f.ang);
+    if (f.px === undefined){ f.px = tx; f.py = ty; }
+    f.px += (tx - f.px)*.03;
+    f.py += (ty - f.py)*.03;
+  }
+  const pts = [...flies.values()].map(f => ({x:f.px, y:f.py, dead:f.mode==="dead"}));
   const lineAlpha = reduced ? .07 : .05 + .07*beat;
   for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++){
     const a=pts[i], b=pts[j], anyDead = a.dead||b.dead;
@@ -212,10 +221,6 @@ function drawField(t){
     fctx.moveTo(a.x,a.y); fctx.lineTo(b.x,b.y); fctx.stroke();
   }
   for (const [name,f] of flies){
-    // The only movement left: sliding to a new constellation spot when
-    // the swarm's roster changes.
-    f.x += (f.tx - f.x)*.03;
-    f.y += (f.ty - f.y)*.03;
     if (f.mode!=="worse"){
       // Entrainment: whatever phase this fly joined on decays toward the
       // swarm's beat over about twenty seconds. Watchable on page load.
@@ -224,7 +229,7 @@ function drawField(t){
       // An ailing box cannot hold the rhythm: its phase wanders.
       f.ph += (Math.random()-.5)*.02;
     }
-    const x = f.x*W, y = f.y*(H-30)+8;
+    const x = f.px, y = f.py;
     let color = "#FFC24B", alpha, r = 4.5;
     if (f.mode==="dead"){ color = "#E06A50"; alpha = .95; }
     else if (f.mode==="ghost"){ color = "#8FA5A3"; alpha = .35; }

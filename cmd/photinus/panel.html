@@ -183,8 +183,13 @@ function syncFlies(states){
       f = {ph:(Math.random()-.5)*2.2, jit:hash01(st.name)*6.28};
       flies.set(st.name, f);
     }
-    f.ang = -Math.PI/2 + 2*Math.PI*(i/n);
-    f.rad = n === 1 ? 0 : 1 + (hash01(st.name) - .5)*.12;
+    // Irregular on purpose: each lantern drifts off its even seat by a
+    // name-determined nudge in angle and radius, so the ring reads as a
+    // constellation rather than a regular polygon. The angular nudge
+    // stays under a third of a seat, which keeps neighbors apart.
+    const seat = 2*Math.PI/n;
+    f.ang = -Math.PI/2 + i*seat + (hash01(st.name) - .5)*seat*.6;
+    f.rad = n === 1 ? 0 : 1 + (hash01(st.name + "r") - .5)*.38;
     f.mode = st.mode;
   });
   for (const k of [...flies.keys()]) if (!seen.has(k)) flies.delete(k);

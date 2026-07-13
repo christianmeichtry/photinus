@@ -174,7 +174,12 @@ function syncFlies(states){
     seen.add(st.name);
     const n = sorted.length;
     const tx = n === 1 ? .5 : .08 + .84*(i + .5)/n;
-    const ty = .3 + .42*hash01(st.name);
+    // The swarm stands on a gentle dome, a landing page's necklace of
+    // nodes rather than a jagged skyline or a flat row: a smooth arc
+    // over the width, with a whisper of per-name variation so it stays
+    // organic without breaking the curve.
+    const t = (tx - .5)/.42;
+    const ty = .66 - .34*(1 - t*t) + (hash01(st.name) - .5)*.08;
     let f = flies.get(st.name);
     if (!f){
       // Born out of step: a fresh phase offset that the beat will reel in.
@@ -201,17 +206,10 @@ function drawField(t){
   const lineAlpha = reduced ? .07 : .05 + .07*beat;
   for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++){
     const a=pts[i], b=pts[j], anyDead = a.dead||b.dead;
-    // Bow each gossip path to one side, a fixed side and depth per pair,
-    // so the web reads as woven threads instead of a wire polygon. The
-    // control point sits at twice the wanted sag, since a quadratic curve
-    // only reaches halfway to it.
-    const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
-    const bow = ((i+j)%2 ? 1 : -1) * Math.min(90, len*.42);
-    const cx=(a.x+b.x)/2 - dy/len*bow, cy=(a.y+b.y)/2 + dx/len*bow;
     fctx.beginPath();
     fctx.strokeStyle = anyDead ? "rgba(224,106,80,.10)" : "rgba(232,226,210,"+lineAlpha.toFixed(3)+")";
     fctx.lineWidth = 1;
-    fctx.moveTo(a.x,a.y); fctx.quadraticCurveTo(cx,cy,b.x,b.y); fctx.stroke();
+    fctx.moveTo(a.x,a.y); fctx.lineTo(b.x,b.y); fctx.stroke();
   }
   for (const [name,f] of flies){
     // The only movement left: sliding to a new constellation spot when
@@ -451,7 +449,19 @@ function saveSettings(){
   tick();
 }
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
+if ("serviceWorker" in navigator){
+  navigator.serviceWorker.register("/sw.js").catch(()=>{});
+  // When a new release's worker takes over mid-visit, reload once so the
+  // page on screen is the page the lantern serves. Guarded to updates
+  // only: a first install claims the page too, and must not reload it.
+  const hadController = !!navigator.serviceWorker.controller;
+  let swapped = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || swapped) return;
+    swapped = true;
+    location.reload();
+  });
+}
 tick();
 setInterval(tick, 2000);
 </script>

@@ -34,6 +34,7 @@ func (s *stringList) Set(v string) error {
 func runCmd(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	hostname, _ := os.Hostname()
+	config := fs.String("config", "", "path to the YAML config file; every run flag has a key there and flags win (default: /etc/photinus/photinus.yml on Linux, see docs for macOS and Windows)")
 	id := fs.String("id", hostname, "this lantern's name, unique in the swarm")
 	bind := fs.String("bind", "0.0.0.0:7946", "host:port the gossip layer listens on")
 	advertise := fs.String("advertise", "", "host[:port] peers should reach this lantern on, when that differs from -bind (NAT, several interfaces)")
@@ -56,6 +57,24 @@ func runCmd(args []string) error {
 		// The flag package stops at the first thing that does not look
 		// like a flag; silently ignoring the rest hides broken commands.
 		return fmt.Errorf("unexpected argument %q, flags must come before it", fs.Arg(0))
+	}
+
+	// The file sits underneath the flags: absent at its default location
+	// is fine (flags only), absent at an explicit -config path is an
+	// error, because the operator named it.
+	cfgPath, cfgExplicit := *config, *config != ""
+	if !cfgExplicit {
+		cfgPath = defaultConfigPath()
+	}
+	if fc, err := loadConfig(cfgPath); err != nil {
+		if cfgExplicit || !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	} else {
+		set := make(map[string]bool)
+		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+		mergeConfig(fc, set, id, bind, advertise, key, notifyCmd, socket, panel, panelToken,
+			interval, skewMax, defaults, &seeds, &watches, &expect)
 	}
 
 	if *id == "" {

@@ -1,0 +1,63 @@
+# photinus config file. Copy to /etc/photinus/photinus.yml (Linux),
+# ~/Library/Application Support/photinus/photinus.yml (macOS, fallback
+# /usr/local/etc/photinus/photinus.yml), or %ProgramData%\photinus\photinus.yml
+# (Windows), then a systemd unit or launchd plist says `photinus run` and
+# nothing else. Flags win over this file; the file wins over environment
+# defaults like $PHOTINUS_KEY. Unknown keys are errors, so typos speak up.
+
+# This lantern's name, unique in the swarm. Defaults to the hostname.
+id: jawa
+
+# host:port the gossip layer listens on.
+bind: 0.0.0.0:7946
+
+# What peers should reach this lantern on, when that differs from bind
+# (NAT, several interfaces).
+advertise: jawa.example.com
+
+# Shared swarm secret: gossip is encrypted and only lanterns holding the
+# same key can join. Use a long random passphrase and keep it out of
+# version control (set it here on the box, or via $PHOTINUS_KEY).
+key: "choose-a-long-random-passphrase"
+
+# Lanterns to join through. One is enough; more is safer.
+seeds:
+  - jawa.example.com:7946
+  - ewok.example.com:7946
+
+# Lanterns that must exist. A declared box that is down or never joins is
+# reported down instead of vanishing. Same list on every box.
+expect:
+  - jawa
+  - ewok
+
+# Time between flashes and the peer clock drift that trips the skew check.
+interval: 2s
+skew_max: 5s
+
+# The standard local checks (disk:/, cpu, memory, swap, uptime, net) run
+# unless this says false. watch adds more, or overrides a default's
+# threshold by naming it. Same syntax as the -watch flag.
+defaults: true
+watch:
+  - disk:/data:85
+  - tcp:db.example.com:5432
+  - http:https://example.com
+  - cert:example.com
+
+# Command the elected lantern runs when the swarm agrees something
+# changed; gets kind, check, target, and a sentence as arguments.
+notify: /usr/local/bin/pager
+
+# Bearer token guarding status data. When set, the gossip port also
+# answers the panel and /status.json, so the app and a browser reach the
+# swarm through the one open port.
+panel_token: change-me
+
+# Also serve the panel token-free on an extra address, for a reverse
+# proxy that authenticates, or loopback.
+panel: 127.0.0.1:8946
+
+# Unix socket for local status queries. Default: photinus-<id>.sock in
+# the temp dir.
+# socket: /run/photinus.sock

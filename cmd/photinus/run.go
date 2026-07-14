@@ -41,7 +41,9 @@ func runCmd(args []string) error {
 	key := fs.String("key", os.Getenv("PHOTINUS_KEY"), "shared swarm secret: encrypts gossip so only lanterns with the same key can join (defaults to $PHOTINUS_KEY, empty runs open)")
 	interval := fs.Duration("interval", 2*time.Second, "time between flashes")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
-	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments")
+	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments (combines with -notify-url)")
+	notifyURL := fs.String("notify-url", "", "url the elected lantern POSTs to when the swarm agrees something changed; the body is a sentence, ntfy-style headers carry title, priority, and tags, so for ntfy pass the topic url like https://ntfy.example.com/photinus (combines with -notify)")
+	notifyURLToken := fs.String("notify-url-token", os.Getenv("PHOTINUS_NOTIFY_TOKEN"), "bearer token sent with every -notify-url post (defaults to $PHOTINUS_NOTIFY_TOKEN, empty sends none)")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
 	panel := fs.String("panel", "", "also serve the read-only web status panel on this extra address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
 	panelToken := fs.String("panel-token", os.Getenv("PHOTINUS_PANEL_TOKEN"), "bearer token guarding status data; when set, the gossip port also answers the panel and /status.json (app and browser reach the swarm through the one open port). Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_PANEL_TOKEN")
@@ -118,11 +120,20 @@ func runCmd(args []string) error {
 		logger.Printf("the config file %s holds the swarm key and other users on this box can read it: chmod 600 it", cfgPath)
 	}
 
-	var tracker *notify.Tracker
+	// Delivery channels are independent: an exec'd command, a webhook post,
+	// or both. Election and damping do not care how the page travels.
+	var senders []notify.Sender
 	if *notifyCmd != "" {
+		senders = append(senders, notify.Exec(*notifyCmd, logger))
+	}
+	if *notifyURL != "" {
+		senders = append(senders, notify.HTTPPoster(*notifyURL, *notifyURLToken, logger))
+	}
+	var tracker *notify.Tracker
+	if len(senders) > 0 {
 		// The warmup matches the observation aging window: by then the
 		// swarm has formed and a lantern is no longer a quorum of one.
-		tracker = notify.New(*id, 5*(*interval), notify.Exec(*notifyCmd, logger), logger)
+		tracker = notify.New(*id, 5*(*interval), fanOut(senders), logger)
 	}
 
 	lan := lantern.New(lantern.Config{
@@ -199,6 +210,20 @@ func runCmd(args []string) error {
 		logger.Printf("did not leave cleanly: %v", err)
 	}
 	return nil
+}
+
+// fanOut composes delivery channels into one Sender that hands the event to
+// each in turn. Every Sender does its own waiting in a goroutine, so one
+// slow channel cannot delay another.
+func fanOut(senders []notify.Sender) notify.Sender {
+	if len(senders) == 1 {
+		return senders[0]
+	}
+	return func(e notify.Event) {
+		for _, send := range senders {
+			send(e)
+		}
+	}
 }
 
 // parseWatches turns -watch flags into checks, plus the declared pulses

@@ -407,6 +407,17 @@ needs fixing. More channels (mail, webhooks) can come as more Senders, and a
 second channel is explicitly not wanted until one alert reliably arrives
 exactly once.
 
+That bar was met, so a second Sender exists: `-notify-url` (with
+`-notify-url-token`, default `$PHOTINUS_NOTIFY_TOKEN`) makes the elected
+lantern POST the page itself, body plus ntfy-style title, priority, and tag
+headers that any webhook receiver can read. Built-in delivery earned its
+place because the exec channel quietly reintroduced a fleet-wide
+dependency: the elected sender is any lantern, so the pager script had to
+exist on every box, and a missing `/tmp` script on the one winner meant a
+silent outage. Now the flag is the whole setup, and `-notify` still runs
+alongside for operators who want their own transport. Election and damping
+are untouched: only the last hop is new.
+
 Under a partition both sides still make independent decisions, but the
 minority cannot reach quorum at all (the last-known-size rule), so it also
 cannot page. Exactly-once is therefore per connected majority, which is the
@@ -444,7 +455,8 @@ wrong key is refused with a plain reason in its log.
 3. Windows probes for the resource checks.
 4. Binary flash encoding once observation counts grow. Skew and the resource
    checks added observations per lantern, so this is closer than it was.
-5. More notification channels as additional Senders, mail first.
+5. More notification channels as additional Senders; the webhook poster
+   (`-notify-url`) landed, mail next.
 6. How much history a lantern keeps, so status can answer "when did this
    start" without becoming a database.
 

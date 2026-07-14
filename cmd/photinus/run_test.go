@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/christianmeichtry/photinus/internal/notify"
 	"strings"
 	"testing"
 	"time"
@@ -109,5 +110,34 @@ func FuzzParseWatches(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, w string) {
 		parseWatches("l1", []string{w})
+	})
+}
+
+func TestFanOut(t *testing.T) {
+	ev := notify.Event{Kind: "down", Check: "tcp", Target: "db:5432", Detail: "down"}
+
+	t.Run("both channels see the event", func(t *testing.T) {
+		var first, second []notify.Event
+		send := fanOut([]notify.Sender{
+			func(e notify.Event) { first = append(first, e) },
+			func(e notify.Event) { second = append(second, e) },
+		})
+		send(ev)
+		if len(first) != 1 || len(second) != 1 {
+			t.Fatalf("channels saw %d and %d events, want 1 each", len(first), len(second))
+		}
+		if first[0] != ev || second[0] != ev {
+			t.Errorf("channels saw %+v and %+v, want %+v", first[0], second[0], ev)
+		}
+	})
+
+	t.Run("a single channel is passed through untouched", func(t *testing.T) {
+		var got []notify.Event
+		one := notify.Sender(func(e notify.Event) { got = append(got, e) })
+		send := fanOut([]notify.Sender{one})
+		send(ev)
+		if len(got) != 1 {
+			t.Fatalf("channel saw %d events, want 1", len(got))
+		}
 	})
 }

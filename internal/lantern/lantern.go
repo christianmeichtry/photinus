@@ -33,6 +33,10 @@ type Config struct {
 	// SkewMax is the clock drift against a peer that trips the skew check.
 	// Zero or negative disables skew measurement.
 	SkewMax time.Duration
+	// Pulses maps each declared pulse name to its silence window. Like
+	// -expect and seeds, the same declarations belong on every box: only a
+	// lantern that declares a pulse evaluates its silence.
+	Pulses map[string]time.Duration
 	// Notify, when set, is fed the swarm's decisions after every flash so
 	// the elected lantern can send the one notification. Nil means no
 	// notifications from this lantern.
@@ -48,6 +52,8 @@ type Lantern struct {
 	maxAge   time.Duration
 	skewMax  time.Duration
 	checks   []check.Check
+	pulses   map[string]time.Duration
+	start    time.Time
 	notify   *notify.Tracker
 	log      *log.Logger
 
@@ -56,6 +62,7 @@ type Lantern struct {
 	clocks      map[string]*peerClock
 	lastSeen    map[string]time.Time
 	lastRun     map[string]time.Time
+	lastPulse   map[string]time.Time
 	badVersions map[int]bool
 	sw          *swarm.Swarm
 }
@@ -80,12 +87,15 @@ func New(cfg Config) *Lantern {
 		maxAge:      maxAge,
 		skewMax:     cfg.SkewMax,
 		checks:      cfg.Checks,
+		pulses:      cfg.Pulses,
+		start:       time.Now().UTC(),
 		notify:      cfg.Notify,
 		log:         logger,
 		store:       make(map[string]quorum.Observation),
 		clocks:      make(map[string]*peerClock),
 		lastSeen:    make(map[string]time.Time),
 		lastRun:     make(map[string]time.Time),
+		lastPulse:   make(map[string]time.Time),
 		badVersions: make(map[int]bool),
 	}
 }
@@ -184,6 +194,7 @@ func (l *Lantern) flash(ctx context.Context) {
 
 	l.mu.Lock()
 	fresh = append(fresh, l.skewObservations(now)...)
+	fresh = append(fresh, l.pulseObservations(now)...)
 	sw := l.sw
 	if sw != nil {
 		fresh = append(fresh, l.livenessObservations(sw.Members(), sw.Roster(), now)...)
@@ -272,6 +283,12 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 		key := storeKey(o)
 		if prev, ok := l.store[key]; !ok || o.Seen.After(prev.Seen) {
 			l.store[key] = o
+		}
+		// A pulse receipt carries the ping time in Seen. Remembering the
+		// newest one separately lets every lantern keep the true silence
+		// baseline even after the receipt observation itself ages out.
+		if o.Check == "pulse" && o.State == quorum.StateUp && o.Seen.After(l.lastPulse[o.Target]) {
+			l.lastPulse[o.Target] = o.Seen
 		}
 		// A flash stamped later than anything heard from this observer is a
 		// fresh clock sample; re-gossiped old flashes are not.

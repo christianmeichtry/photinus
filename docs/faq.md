@@ -108,6 +108,23 @@ denominator. Harmless in small numbers, since the safe failure direction
 is quiet. To reset, restart all lanterns within a short window; graceful
 forgetting is on the roadmap.
 
+## How do I get paged when a cron job stops running?
+
+Declare a pulse on every box, `-watch pulse:backup-db:26h`, and have the
+job ping any lantern when it finishes:
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" http://any-lantern:7946/pulse/backup-db
+```
+
+Any lantern means any: the receipt gossips from whichever one took the
+ping, so there is no special box to keep alive. When the pulse stays
+silent past its window, the declared lanterns vote it down and quorum
+pages once. Pinging a name before declaring it is fine; the reply says
+"not declared on this lantern" until the flag lands. The door answers
+wherever the panel does: on the gossip port when `-panel-token` is set,
+and on any `-panel` address.
+
 ## Notifications repeat during flapping
 
 Every down and every recovery notifies, so a box flapping on a half-open

@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>photinus · how the swarm works</title>
+<meta name="description" content="How photinus works: lanterns, flashes, gossip, quorum, the authority rule, hash election, heartbeats, and partitions, with pictures.">
+<style>
+  :root{
+    --dusk:#0B1F24; --card:#102830; --ink:#E8E2D2; --dim:#8FA5A3;
+    --lantern:#FFC24B; --down:#E06A50; --up:#7FA893; --rule:#1d3a42;
+    --mono:ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--dusk);color:var(--ink);font:400 1.02rem/1.65 Georgia,serif;padding:0 1.25rem}
+  .wrap{max-width:46rem;margin:0 auto;padding:2.5rem 0 4rem}
+  .brand{font-family:var(--mono);font-size:.8rem;letter-spacing:.14em;color:var(--lantern)}
+  .brand::before{content:"● ";font-size:.6em;vertical-align:.25em}
+  .brand a{color:inherit;text-decoration:none}
+  .stage{font-size:.62rem;letter-spacing:.18em;vertical-align:.14em;margin-left:.45rem;
+    padding:.12rem .5rem;border:1px solid var(--lantern);border-radius:99px;opacity:.85}
+  h1{font-size:clamp(1.7rem,4.5vw,2.4rem);line-height:1.15;margin:2.2rem 0 .6rem;font-weight:400}
+  h2{font-size:1.25rem;margin:3rem 0 .6rem;font-weight:400;color:var(--lantern)}
+  p{margin:.8rem 0;color:var(--ink)}
+  p.dim{color:var(--dim);font-size:.92rem}
+  figure{margin:1.4rem 0;background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:1.1rem}
+  figure svg{display:block;width:100%;height:auto}
+  figcaption{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-top:.7rem;line-height:1.5}
+  code{font-family:var(--mono);font-size:.85em;background:var(--card);border:1px solid var(--rule);border-radius:5px;padding:.08em .35em}
+  table{width:100%;border-collapse:collapse;font-size:.9rem;margin:1rem 0}
+  th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--rule)}
+  th{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;color:var(--dim);font-weight:400}
+  td:first-child{font-family:var(--mono);color:var(--lantern);white-space:nowrap}
+  footer{margin-top:4rem;padding-top:1rem;border-top:1px solid var(--rule);
+    font-family:var(--mono);font-size:.75rem;color:var(--dim);display:flex;gap:1.5rem;flex-wrap:wrap}
+  footer a{color:var(--dim)}
+  /* the one animation: lanterns breathe in unison, gently */
+  @keyframes glow{0%,100%{opacity:.45}50%{opacity:1}}
+  .fly{animation:glow 2.6s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){.fly{animation:none;opacity:1}}
+  svg text{font-family:ui-monospace,Menlo,Consolas,monospace;fill:#8FA5A3}
+  svg .lbl{font-size:11px}
+  svg .big{font-size:13px;fill:#E8E2D2}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><a href="/">photinus</a> <span class="stage">alpha</span></div>
+
+  <h1>How the swarm works, with pictures.</h1>
+  <p class="dim">Seven ideas carry the whole design. Each one is checkable against the same
+  question: is this still true if any single machine disappears?</p>
+
+  <h2>1 · A mesh, not a star</h2>
+  <p>Most monitoring is a star: every host reports to one collector, and a dashboard sits
+  on the collector. The collector is the one machine that must never fail, and the day it
+  does, you are blind. Photinus has no center. Every host runs a <strong>lantern</strong>,
+  every lantern watches its peers, and any one of them can answer for the whole swarm.</p>
+  <figure>
+    <svg viewBox="0 0 640 200" role="img" aria-label="A star topology with a failed collector, next to a mesh where every node connects to every other">
+      <!-- star -->
+      <g stroke="#1d3a42" stroke-width="1.2">
+        <line x1="150" y1="100" x2="70"  y2="40"/><line x1="150" y1="100" x2="230" y2="40"/>
+        <line x1="150" y1="100" x2="55"  y2="120"/><line x1="150" y1="100" x2="245" y2="120"/>
+        <line x1="150" y1="100" x2="110" y2="175"/><line x1="150" y1="100" x2="190" y2="175"/>
+      </g>
+      <g fill="#7FA893">
+        <circle cx="70" cy="40" r="7"/><circle cx="230" cy="40" r="7"/><circle cx="55" cy="120" r="7"/>
+        <circle cx="245" cy="120" r="7"/><circle cx="110" cy="175" r="7"/><circle cx="190" cy="175" r="7"/>
+      </g>
+      <circle cx="150" cy="100" r="12" fill="#E06A50"/>
+      <line x1="138" y1="88" x2="162" y2="112" stroke="#0B1F24" stroke-width="3"/>
+      <line x1="162" y1="88" x2="138" y2="112" stroke="#0B1F24" stroke-width="3"/>
+      <text x="150" y="30" text-anchor="middle" class="big">the star</text>
+      <text x="150" y="196" text-anchor="middle" class="lbl">collector dies, everyone is blind</text>
+      <!-- mesh -->
+      <g stroke="#1d3a42" stroke-width="1">
+        <line x1="420" y1="45" x2="530" y2="45"/><line x1="420" y1="45" x2="380" y2="120"/>
+        <line x1="420" y1="45" x2="475" y2="170"/><line x1="420" y1="45" x2="570" y2="120"/>
+        <line x1="530" y1="45" x2="570" y2="120"/><line x1="530" y1="45" x2="380" y2="120"/>
+        <line x1="530" y1="45" x2="475" y2="170"/><line x1="380" y1="120" x2="475" y2="170"/>
+        <line x1="380" y1="120" x2="570" y2="120"/><line x1="570" y1="120" x2="475" y2="170"/>
+      </g>
+      <g fill="#FFC24B">
+        <circle class="fly" cx="420" cy="45" r="7"/><circle class="fly" cx="530" cy="45" r="7"/>
+        <circle class="fly" cx="380" cy="120" r="7"/><circle class="fly" cx="570" cy="120" r="7"/>
+        <circle class="fly" cx="475" cy="170" r="7"/>
+      </g>
+      <text x="475" y="30" text-anchor="middle" class="big">the mesh</text>
+      <text x="475" y="196" text-anchor="middle" class="lbl">any lantern answers for the swarm</text>
+    </svg>
+    <figcaption>There is no machine on the right whose death makes the others blind. That
+    is the entire design test.</figcaption>
+  </figure>
+
+  <h2>2 · The flash</h2>
+  <p>Every couple of seconds each lantern runs its local checks, bundles what it currently
+  believes into a <strong>flash</strong>, and gossips it to a few random peers. Those peers
+  pass it on. Nobody talks to everyone; news still crosses the swarm in seconds, and the
+  cost per lantern stays flat no matter how big the swarm grows.</p>
+  <figure>
+    <svg viewBox="0 0 640 170" role="img" aria-label="One lantern's cycle: check, flash, merge, decide">
+      <g fill="none" stroke="#1d3a42" stroke-width="1.2">
+        <path d="M 90 85 A 60 60 0 1 1 89 85"/>
+      </g>
+      <circle cx="90" cy="25" r="6" fill="#FFC24B"/>
+      <text x="90" y="12" text-anchor="middle" class="lbl">check</text>
+      <circle cx="150" cy="85" r="6" fill="#FFC24B"/>
+      <text x="168" y="89" class="lbl">flash out</text>
+      <circle cx="90" cy="145" r="6" fill="#FFC24B"/>
+      <text x="90" y="164" text-anchor="middle" class="lbl">merge what arrives</text>
+      <circle cx="30" cy="85" r="6" fill="#FFC24B"/>
+      <text x="30" y="66" text-anchor="middle" class="lbl">decide</text>
+      <!-- gossip fan-out -->
+      <g stroke="#1d3a42" stroke-width="1">
+        <line x1="300" y1="85" x2="420" y2="35"/><line x1="300" y1="85" x2="430" y2="90"/>
+        <line x1="300" y1="85" x2="415" y2="140"/>
+        <line x1="420" y1="35" x2="540" y2="55" stroke-dasharray="3 4"/>
+        <line x1="430" y1="90" x2="545" y2="110" stroke-dasharray="3 4"/>
+        <line x1="415" y1="140" x2="540" y2="55" stroke-dasharray="3 4"/>
+      </g>
+      <circle class="fly" cx="300" cy="85" r="9" fill="#FFC24B"/>
+      <g fill="#7FA893">
+        <circle cx="420" cy="35" r="6"/><circle cx="430" cy="90" r="6"/><circle cx="415" cy="140" r="6"/>
+      </g>
+      <g fill="#8FA5A3" opacity=".7">
+        <circle cx="540" cy="55" r="5"/><circle cx="545" cy="110" r="5"/>
+      </g>
+      <text x="300" y="115" text-anchor="middle" class="lbl">one flash</text>
+      <text x="475" y="20" text-anchor="middle" class="lbl">a few peers, then their peers</text>
+    </svg>
+    <figcaption>Left: the loop one lantern lives in. Right: constant fan-out; the dashed
+    hops are other lanterns relaying, not the sender working harder.</figcaption>
+  </figure>
+
+  <h2>3 · The life of an alert</h2>
+  <p>Everything above and below hangs on one path: how a failing check becomes exactly one
+  page. This is that path, the same on every lantern, with no step that needs a central
+  machine.</p>
+  <figure>
+    <svg viewBox="0 0 640 560" role="img" aria-label="Flowchart from a check running to a single page: observation, flash, merge, authority or quorum decision, election, page">
+      <defs>
+        <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="#8FA5A3"/>
+        </marker>
+      </defs>
+      <g stroke="#8FA5A3" stroke-width="1.2" fill="none" marker-end="url(#arr)">
+        <line x1="320" y1="66"  x2="320" y2="94"/>
+        <line x1="320" y1="130" x2="320" y2="158"/>
+        <line x1="320" y1="194" x2="320" y2="222"/>
+        <!-- diamond yes/no -->
+        <path d="M 232 254 H 130 V 322"/>
+        <path d="M 408 254 H 510 V 322"/>
+        <path d="M 130 358 V 488 H 207"/>
+        <line x1="510" y1="358" x2="510" y2="392"/>
+        <path d="M 448 424 H 320 V 470"/>
+        <line x1="572" y1="424" x2="620" y2="424"/>
+        <line x1="320" y1="506" x2="320" y2="524"/>
+      </g>
+      <!-- boxes -->
+      <rect x="230" y="30" width="180" height="36" rx="8" fill="#102830" stroke="#1d3a42"/>
+      <text x="320" y="53" text-anchor="middle" class="lbl" fill="#E8E2D2">a check runs, it fails</text>
+      <rect x="215" y="94" width="210" height="36" rx="8" fill="#102830" stroke="#1d3a42"/>
+      <text x="320" y="117" text-anchor="middle" class="lbl" fill="#E8E2D2">one observation, one opinion</text>
+      <rect x="215" y="158" width="210" height="36" rx="8" fill="#102830" stroke="#1d3a42"/>
+      <text x="320" y="181" text-anchor="middle" class="lbl" fill="#E8E2D2">rides the next flash, gossips</text>
+      <!-- decision 1 -->
+      <path d="M 320 218 L 408 254 L 320 290 L 232 254 Z" fill="#102830" stroke="#FFC24B"/>
+      <text x="320" y="250" text-anchor="middle" class="lbl" fill="#E8E2D2">subject is the</text>
+      <text x="320" y="264" text-anchor="middle" class="lbl" fill="#E8E2D2">observer's own host?</text>
+      <text x="200" y="246" text-anchor="middle" class="lbl" fill="#FFC24B">yes</text>
+      <text x="440" y="246" text-anchor="middle" class="lbl" fill="#FFC24B">no</text>
+      <!-- authority path -->
+      <rect x="40" y="322" width="180" height="36" rx="8" fill="#102830" stroke="#FFC24B"/>
+      <text x="130" y="340" text-anchor="middle" class="lbl" fill="#E8E2D2">authority: its own word</text>
+      <text x="130" y="353" text-anchor="middle" class="lbl" fill="#E8E2D2">decides, warning at most</text>
+      <!-- quorum path -->
+      <rect x="420" y="322" width="180" height="36" rx="8" fill="#102830" stroke="#1d3a42"/>
+      <text x="510" y="340" text-anchor="middle" class="lbl" fill="#E8E2D2">count the votes of the</text>
+      <text x="510" y="353" text-anchor="middle" class="lbl" fill="#E8E2D2">swarm as last known</text>
+      <!-- decision 2 -->
+      <path d="M 510 392 L 572 424 L 510 456 L 448 424 Z" fill="#102830" stroke="#E06A50"/>
+      <text x="510" y="420" text-anchor="middle" class="lbl" fill="#E8E2D2">majority</text>
+      <text x="510" y="434" text-anchor="middle" class="lbl" fill="#E8E2D2">agrees?</text>
+      <text x="416" y="416" text-anchor="middle" class="lbl" fill="#FFC24B">yes</text>
+      <text x="596" y="416" text-anchor="middle" class="lbl" fill="#FFC24B">no</text>
+      <text x="612" y="446" text-anchor="end" class="lbl">stays data,</text>
+      <text x="612" y="460" text-anchor="end" class="lbl">no page</text>
+      <!-- middle continuation -->
+      <rect x="215" y="470" width="210" height="36" rx="8" fill="#102830" stroke="#1d3a42"/>
+      <text x="320" y="488" text-anchor="middle" class="lbl" fill="#E8E2D2">state changed: hash election</text>
+      <text x="320" y="501" text-anchor="middle" class="lbl" fill="#E8E2D2">picks one live lantern</text>
+      <rect x="245" y="524" width="150" height="30" rx="15" fill="#FFC24B"/>
+      <text x="320" y="544" text-anchor="middle" class="lbl" fill="#0B1F24">exactly one page</text>
+    </svg>
+    <figcaption>Both decision points are the design: authority for a host's own facts,
+    quorum for everything else, and a deterministic election so agreement never needs a
+    leader. The next sections take each branch apart.</figcaption>
+  </figure>
+
+  <h2>4 · Quorum: opinion versus outage</h2>
+  <p>One lantern failing to reach a host is a fact about that lantern as much as about the
+  host. So a single opinion never pages. Every lantern votes with its own
+  <strong>observation</strong>, and only when a majority of the swarm as last known agrees
+  does the state become an outage.</p>
+  <figure>
+    <svg viewBox="0 0 640 190" role="img" aria-label="One lantern seeing a host down is data; a majority seeing it down is an outage">
+      <!-- left: one dissenter -->
+      <g stroke="#1d3a42" stroke-width="1">
+        <line x1="80" y1="50" x2="160" y2="120"/><line x1="240" y1="50" x2="160" y2="120"/>
+        <line x1="160" y1="30" x2="160" y2="120"/><line x1="90" y1="140" x2="160" y2="120"/><line x1="230" y1="140" x2="160" y2="120"/>
+      </g>
+      <g fill="#7FA893">
+        <circle cx="80" cy="50" r="7"/><circle cx="240" cy="50" r="7"/>
+        <circle cx="160" cy="30" r="7"/><circle cx="230" cy="140" r="7"/>
+      </g>
+      <circle cx="90" cy="140" r="7" fill="#E06A50"/>
+      <rect x="140" y="105" width="40" height="28" rx="6" fill="#102830" stroke="#1d3a42"/>
+      <text x="160" y="124" text-anchor="middle" class="lbl" fill="#E8E2D2">db:5432</text>
+      <text x="160" y="172" text-anchor="middle" class="lbl">1 of 5 says down · stays UP · just data</text>
+      <!-- right: quorum -->
+      <g stroke="#1d3a42" stroke-width="1">
+        <line x1="420" y1="50" x2="500" y2="120"/><line x1="580" y1="50" x2="500" y2="120"/>
+        <line x1="500" y1="30" x2="500" y2="120"/><line x1="430" y1="140" x2="500" y2="120"/><line x1="570" y1="140" x2="500" y2="120"/>
+      </g>
+      <g fill="#E06A50">
+        <circle cx="420" cy="50" r="7"/><circle cx="500" cy="30" r="7"/><circle cx="430" cy="140" r="7"/>
+      </g>
+      <g fill="#7FA893">
+        <circle cx="580" cy="50" r="7"/><circle cx="570" cy="140" r="7"/>
+      </g>
+      <rect x="478" y="105" width="44" height="28" rx="6" fill="#E06A50"/>
+      <text x="500" y="124" text-anchor="middle" class="lbl" fill="#0B1F24">db:5432</text>
+      <text x="500" y="172" text-anchor="middle" class="lbl">3 of 5 say down · quorum · OUTAGE, page once</text>
+    </svg>
+    <figcaption>Same host, same checks. The difference between the two pictures is the
+    whole product.</figcaption>
+  </figure>
+  <p>A <strong>warning is never an outage</strong>: a full disk on a living host can only
+  WARN, because the host is up and its own lantern is saying so. DOWN is reserved for
+  things the swarm confirmed unreachable.</p>
+
+  <h2>5 · The authority rule</h2>
+  <p>For a host's own facts, disk, cpu, memory, swap, uptime, network rate, no vote is
+  taken. The host's own lantern is the sole authority on its own machine: its word decides,
+  and hearsay from others never mixes in. Quorum is for the things no single machine can
+  know alone, like reachability; authority is for the things only one machine can know at
+  all.</p>
+  <figure>
+    <svg viewBox="0 0 640 130" role="img" aria-label="A host's own report about its disk decides; peers' opinions about that disk are ignored">
+      <circle class="fly" cx="110" cy="60" r="10" fill="#FFC24B"/>
+      <text x="110" y="35" text-anchor="middle" class="lbl">jawa</text>
+      <rect x="170" y="44" width="150" height="32" rx="6" fill="#102830" stroke="#FFC24B"/>
+      <text x="245" y="65" text-anchor="middle" class="lbl" fill="#E8E2D2">"my disk is 92% full"</text>
+      <text x="245" y="100" text-anchor="middle" class="lbl">jawa's own word · decides alone</text>
+      <g fill="#8FA5A3" opacity=".6">
+        <circle cx="450" cy="40" r="6"/><circle cx="450" cy="85" r="6"/>
+      </g>
+      <g stroke="#1d3a42" stroke-width="1" stroke-dasharray="3 4">
+        <line x1="463" y1="40" x2="560" y2="55"/><line x1="463" y1="85" x2="560" y2="70"/>
+      </g>
+      <text x="560" y="45" class="lbl" text-anchor="start" fill="#8FA5A3">hearsay,</text>
+      <text x="560" y="62" class="lbl" text-anchor="start" fill="#8FA5A3">never</text>
+      <text x="560" y="79" class="lbl" text-anchor="start" fill="#8FA5A3">counted</text>
+      <text x="452" y="115" text-anchor="middle" class="lbl">peers guessing about jawa's disk</text>
+    </svg>
+    <figcaption>Rule of thumb: quorum for what many can see, authority for what only one
+    can see.</figcaption>
+  </figure>
+
+  <h2>6 · Paging exactly once</h2>
+  <p>When the swarm agrees something broke, fourteen lanterns must not send fourteen
+  emails. There is no leader to do the sending, on purpose. Instead every lantern runs the
+  same arithmetic: hash the alert, and the live lantern whose id sits closest to that hash
+  is the sender. No election protocol, no coordination round. If the chosen lantern is
+  itself the dead one, the same arithmetic picks the next, and the survivor pages.</p>
+  <figure>
+    <svg viewBox="0 0 640 150" role="img" aria-label="An alert hashes to one elected lantern which sends the single page; if that lantern is dead the next closest sends">
+      <rect x="30" y="55" width="130" height="34" rx="6" fill="#E06A50"/>
+      <text x="95" y="77" text-anchor="middle" class="lbl" fill="#0B1F24">db:5432 DOWN</text>
+      <text x="95" y="110" text-anchor="middle" class="lbl">hash(alert)</text>
+      <g stroke="#1d3a42" stroke-width="1.2"><line x1="160" y1="72" x2="250" y2="72"/></g>
+      <g fill="#7FA893">
+        <circle cx="280" cy="40" r="8"/><circle cx="280" cy="110" r="8"/>
+        <circle cx="380" cy="110" r="8"/><circle cx="430" cy="40" r="8"/>
+      </g>
+      <circle class="fly" cx="360" cy="40" r="11" fill="#FFC24B"/>
+      <text x="360" y="18" text-anchor="middle" class="lbl">closest id wins</text>
+      <g stroke="#FFC24B" stroke-width="1.4"><line x1="371" y1="40" x2="520" y2="40"/></g>
+      <text x="530" y="45" class="lbl" fill="#E8E2D2">one page →</text>
+      <text x="360" y="140" text-anchor="middle" class="lbl">dead winner? the next closest takes over, automatically</text>
+    </svg>
+    <figcaption>Deterministic election: everyone computes the same winner from the same
+    facts, so nobody has to agree on anything first.</figcaption>
+  </figure>
+  <p>A flapping subject, bouncing up and down, is damped: the swarm sends one page that
+  says it is flapping, holds further pages, and closes with one page when it settles.</p>
+
+  <h2>7 · The heartbeat (pulse)</h2>
+  <p>Some failures are things that did not happen. A backup that silently stopped running
+  has no port to dial. So the job reports in instead: its cron line ends by pinging
+  <code>/pulse/backup-db</code> on <em>any</em> lantern it can reach. The receipt gossips
+  like everything else. When a declared pulse stays silent past its window, every lantern
+  votes down, and quorum turns the silence into a page.</p>
+  <figure>
+    <svg viewBox="0 0 640 170" role="img" aria-label="A cron job pings any lantern; the receipt gossips; silence past the window makes every lantern vote down">
+      <rect x="20" y="60" width="96" height="32" rx="6" fill="#102830" stroke="#1d3a42"/>
+      <text x="68" y="81" text-anchor="middle" class="lbl" fill="#E8E2D2">backup cron</text>
+      <g stroke="#7FA893" stroke-width="1.4"><line x1="116" y1="76" x2="200" y2="76"/></g>
+      <text x="158" y="66" text-anchor="middle" class="lbl" fill="#7FA893">ping</text>
+      <circle class="fly" cx="220" cy="76" r="9" fill="#FFC24B"/>
+      <g stroke="#1d3a42" stroke-width="1" stroke-dasharray="3 4">
+        <line x1="232" y1="70" x2="320" y2="40"/><line x1="232" y1="82" x2="320" y2="115"/>
+      </g>
+      <g fill="#7FA893"><circle cx="335" cy="38" r="7"/><circle cx="335" cy="117" r="7"/></g>
+      <text x="290" y="150" text-anchor="middle" class="lbl">the receipt gossips: everyone knows the last ping</text>
+      <g>
+        <rect x="430" y="30" width="185" height="100" rx="8" fill="#102830" stroke="#1d3a42"/>
+        <text x="522" y="55" text-anchor="middle" class="lbl" fill="#E8E2D2">window: 26h</text>
+        <text x="522" y="78" text-anchor="middle" class="lbl" fill="#E8E2D2">silence: 27h</text>
+        <text x="522" y="106" text-anchor="middle" class="lbl" fill="#E06A50">every lantern votes DOWN</text>
+      </g>
+    </svg>
+    <figcaption>The ping may land anywhere, so there is no special box the job depends on.
+    The alarm needs quorum, so one machine with a wrong clock cannot page alone.</figcaption>
+  </figure>
+
+  <h2>8 · When the network splits</h2>
+  <p>A partition is the nastiest case: both halves believe the other half died. Photinus
+  counts quorum against the swarm as <em>last known</em>, not as currently reachable. The
+  minority side can never reach a majority of that remembered number, so it goes quiet
+  instead of screaming; the majority side still holds quorum and keeps working.</p>
+  <figure>
+    <svg viewBox="0 0 640 160" role="img" aria-label="A 5 and 2 split: the majority side keeps quorum, the minority side goes quiet">
+      <line x1="320" y1="15" x2="320" y2="145" stroke="#E06A50" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <g fill="#FFC24B">
+        <circle class="fly" cx="90" cy="50" r="7"/><circle class="fly" cx="170" cy="35" r="7"/>
+        <circle class="fly" cx="240" cy="60" r="7"/><circle class="fly" cx="120" cy="110" r="7"/>
+        <circle class="fly" cx="210" cy="115" r="7"/>
+      </g>
+      <text x="165" y="150" text-anchor="middle" class="lbl">5 of a remembered 7 · quorum holds · still pages</text>
+      <g fill="#8FA5A3" opacity=".75">
+        <circle cx="450" cy="60" r="7"/><circle cx="530" cy="95" r="7"/>
+      </g>
+      <text x="490" y="150" text-anchor="middle" class="lbl">2 of a remembered 7 · can never reach quorum · goes quiet</text>
+    </svg>
+    <figcaption>Wrong monitoring conclusions are worse than missing ones: the side that
+    cannot know stays silent rather than guessing.</figcaption>
+  </figure>
+
+  <h2>What a lantern watches</h2>
+  <table>
+    <tr><th>check</th><th>what it tests</th><th>kind</th></tr>
+    <tr><td>tcp</td><td>dial a host:port</td><td>remote</td></tr>
+    <tr><td>http</td><td>fetch a url; 2xx or 3xx is up</td><td>remote</td></tr>
+    <tr><td>cert</td><td>TLS health; expiring soon warns, broken is down</td><td>remote</td></tr>
+    <tr><td>pulse</td><td>a heartbeat: a job pings any lantern, silence pages</td><td>remote</td></tr>
+    <tr><td>disk</td><td>filesystem usage against a threshold</td><td>local</td></tr>
+    <tr><td>cpu</td><td>processor utilization against a threshold</td><td>local</td></tr>
+    <tr><td>memory</td><td>RAM utilization against a threshold</td><td>local</td></tr>
+    <tr><td>swap</td><td>swap use, the early warning before OOM</td><td>local</td></tr>
+    <tr><td>uptime</td><td>flags a reboot since the last flash</td><td>local</td></tr>
+    <tr><td>net</td><td>traffic rate on the main interface, for spotting anomalies</td><td>local</td></tr>
+    <tr><td>skew</td><td>clock drift measured from peers' flash timestamps</td><td>relational</td></tr>
+    <tr><td>lantern</td><td>every member's liveness, the mesh watching itself</td><td>relational</td></tr>
+  </table>
+  <p class="dim">Local checks fall under the authority rule; remote checks under quorum;
+  the relational ones are the swarm measuring itself. The standard local set runs by
+  default: one binary and a seed address is a fully monitored host.</p>
+
+  <footer>
+    <span><a href="/">photinus.dev</a></span>
+    <span><a href="https://github.com/christianmeichtry/photinus">source on GitHub</a></span>
+    <span>built in Sierre by <a href="https://atelier-agile.ch">atelier agile</a></span>
+  </footer>
+</div>
+</body>
+</html>

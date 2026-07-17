@@ -76,6 +76,12 @@ swap, uptime, network rate) run by default. Add `-watch` for services
 A single lantern losing sight of a host is data. Half the swarm losing sight of it is an
 outage. The difference between those two is the whole product.
 
+## How it works, with pictures
+
+[photinus.dev/how.html](https://photinus.dev/how.html) walks the whole design in seven
+diagrams and one flowchart: mesh versus star, the flash, the life of an alert, quorum,
+the authority rule, exactly-once paging, heartbeats, and what a partition does.
+
 ## Design notes
 
 See [`docs/design.md`](docs/design.md) for where the thinking currently stands, including

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/christianmeichtry/photinus/internal/lantern"
 	"github.com/christianmeichtry/photinus/internal/version"
@@ -44,6 +45,57 @@ func TestStatusHandlerAuthAndCORS(t *testing.T) {
 			}
 			if tt.wantCode == 401 && rec.Header().Get("WWW-Authenticate") == "" {
 				t.Error("401 without a WWW-Authenticate header")
+			}
+		})
+	}
+}
+
+func TestPulseHandler(t *testing.T) {
+	const token = "s3cret"
+
+	tests := []struct {
+		name       string
+		token      string
+		method     string
+		path       string
+		authHeader string
+		wantCode   int
+		wantBody   string
+	}{
+		{"POST with the token records", token, "POST", "/pulse/backup-db", "Bearer s3cret", 200, "pulse backup-db recorded"},
+		{"GET works too, cron lines are curl", token, "GET", "/pulse/backup-db", "Bearer s3cret", 200, "pulse backup-db recorded"},
+		{"undeclared name still records, with a hint", token, "GET", "/pulse/mystery-job", "Bearer s3cret", 200, "pulse mystery-job recorded, not declared on this lantern"},
+		{"no token set, open access", "", "GET", "/pulse/backup-db", "", 200, "pulse backup-db recorded"},
+		{"token set, no header", token, "POST", "/pulse/backup-db", "", 401, ""},
+		{"token set, wrong header", token, "POST", "/pulse/backup-db", "Bearer nope", 401, ""},
+		{"preflight passes without a token", token, "OPTIONS", "/pulse/backup-db", "", 204, ""},
+		{"a pulse needs a name", token, "GET", "/pulse/", "Bearer s3cret", 400, ""},
+		{"a nested path is not a name", token, "GET", "/pulse/backup/db", "Bearer s3cret", 400, ""},
+		{"other methods are refused", token, "DELETE", "/pulse/backup-db", "Bearer s3cret", 405, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lan := lantern.New(lantern.Config{
+				ID:     "l1",
+				Pulses: map[string]time.Duration{"backup-db": time.Hour},
+			})
+			h := statusHandler(tt.token, lan)
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != tt.wantCode {
+				t.Fatalf("code = %d, want %d", rec.Code, tt.wantCode)
+			}
+			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+				t.Errorf("CORS origin = %q, want *", got)
+			}
+			if tt.wantBody != "" {
+				if got := strings.TrimSpace(rec.Body.String()); got != tt.wantBody {
+					t.Errorf("body = %q, want %q", got, tt.wantBody)
+				}
 			}
 		})
 	}

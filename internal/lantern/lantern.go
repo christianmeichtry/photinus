@@ -33,6 +33,10 @@ type Config struct {
 	// SkewMax is the clock drift against a peer that trips the skew check.
 	// Zero or negative disables skew measurement.
 	SkewMax time.Duration
+	// Pulses maps each declared pulse name to its silence window. Like
+	// -expect and seeds, the same declarations belong on every box: only a
+	// lantern that declares a pulse evaluates its silence.
+	Pulses map[string]time.Duration
 	// Notify, when set, is fed the swarm's decisions after every flash so
 	// the elected lantern can send the one notification. Nil means no
 	// notifications from this lantern.
@@ -48,6 +52,8 @@ type Lantern struct {
 	maxAge   time.Duration
 	skewMax  time.Duration
 	checks   []check.Check
+	pulses   map[string]time.Duration
+	start    time.Time
 	notify   *notify.Tracker
 	log      *log.Logger
 
@@ -56,6 +62,9 @@ type Lantern struct {
 	clocks      map[string]*peerClock
 	lastSeen    map[string]time.Time
 	lastRun     map[string]time.Time
+	lastPulse   map[string]time.Time
+	pulseStuck  map[string]int
+	pulseWarned map[string]bool
 	badVersions map[int]bool
 	sw          *swarm.Swarm
 }
@@ -80,12 +89,17 @@ func New(cfg Config) *Lantern {
 		maxAge:      maxAge,
 		skewMax:     cfg.SkewMax,
 		checks:      cfg.Checks,
+		pulses:      cfg.Pulses,
+		start:       time.Now().UTC(),
 		notify:      cfg.Notify,
 		log:         logger,
 		store:       make(map[string]quorum.Observation),
 		clocks:      make(map[string]*peerClock),
 		lastSeen:    make(map[string]time.Time),
 		lastRun:     make(map[string]time.Time),
+		lastPulse:   make(map[string]time.Time),
+		pulseStuck:  make(map[string]int),
+		pulseWarned: make(map[string]bool),
 		badVersions: make(map[int]bool),
 	}
 }
@@ -184,6 +198,7 @@ func (l *Lantern) flash(ctx context.Context) {
 
 	l.mu.Lock()
 	fresh = append(fresh, l.skewObservations(now)...)
+	fresh = append(fresh, l.pulseObservations(now)...)
 	sw := l.sw
 	if sw != nil {
 		fresh = append(fresh, l.livenessObservations(sw.Members(), sw.Roster(), now)...)
@@ -213,13 +228,46 @@ func (l *Lantern) flash(ctx context.Context) {
 
 	// With the flash out, look at what the swarm now agrees on and let the
 	// elected lantern notify. Every lantern runs this; only the winner acts.
-	if l.notify != nil {
+	if l.notify != nil || len(l.pulses) > 0 {
 		st := l.Status()
-		decisions := make([]quorum.Decision, len(st.Subjects))
-		for i, s := range st.Subjects {
-			decisions[i] = s.Decision
+		if l.notify != nil {
+			decisions := make([]quorum.Decision, len(st.Subjects))
+			for i, s := range st.Subjects {
+				decisions[i] = s.Decision
+			}
+			l.notify.Observe(decisions, st.Swarm, now)
 		}
-		l.notify.Observe(decisions, st.Swarm, now)
+		l.warnUnderDeclaredPulses(st)
+	}
+}
+
+// warnUnderDeclaredPulses catches the one way a pulse fails silently: every
+// lantern that declares it calls it silent, yet quorum cannot be reached
+// because too few boxes declare it. A safety net that cannot fire must say
+// so in the log. The condition has to hold for a stretch of flashes first,
+// so the moments when declarers merely have not all voted yet do not warn.
+func (l *Lantern) warnUnderDeclaredPulses(st Status) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, s := range st.Subjects {
+		if s.Check != "pulse" {
+			continue
+		}
+		name := s.Target
+		if _, declaredHere := l.pulses[name]; !declaredHere || l.pulseWarned[name] {
+			continue
+		}
+		stuck := s.Votes > 0 && s.Votes == s.Voters && s.Votes < s.Needed
+		if !stuck {
+			l.pulseStuck[name] = 0
+			continue
+		}
+		l.pulseStuck[name]++
+		if l.pulseStuck[name] >= 15 {
+			l.pulseWarned[name] = true
+			l.log.Printf("pulse %s is silent by every lantern that declares it (%d of quorum %d), but too few declare it to ever page: add -watch pulse:%s to more boxes",
+				name, s.Votes, s.Needed, name)
+		}
 	}
 }
 
@@ -272,6 +320,12 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 		key := storeKey(o)
 		if prev, ok := l.store[key]; !ok || o.Seen.After(prev.Seen) {
 			l.store[key] = o
+		}
+		// A pulse receipt carries the ping time in Seen. Remembering the
+		// newest one separately lets every lantern keep the true silence
+		// baseline even after the receipt observation itself ages out.
+		if o.Check == "pulse" && o.State == quorum.StateUp && o.Seen.After(l.lastPulse[o.Target]) {
+			l.lastPulse[o.Target] = o.Seen
 		}
 		// A flash stamped later than anything heard from this observer is a
 		// fresh clock sample; re-gossiped old flashes are not.

@@ -48,7 +48,7 @@ func runCmd(args []string) error {
 	var seeds, watches, expect stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
 	fs.Var(&expect, "expect", "name of a lantern that must exist; a declared box that is down or never joins is reported down instead of vanishing (repeatable, same list on every box)")
-	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration], net[:mbit]; naming a default check overrides it")
+	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration], net[:mbit], pulse:name[:window] (a heartbeat / dead man's switch); naming a default check overrides it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -66,14 +66,14 @@ func runCmd(args []string) error {
 		sockPath = defaultSocket(*id)
 	}
 
-	checks, err := parseWatches(*id, watches)
+	checks, pulses, err := parseWatches(*id, watches)
 	if err != nil {
 		return err
 	}
 	if *defaults {
 		// The named checks came first, so a -watch that names a default
 		// subject (say disk:/ with its own threshold) wins over it.
-		std, err := parseWatches(*id, []string{"disk:/", "cpu", "memory", "swap", "uptime", "net"})
+		std, _, err := parseWatches(*id, []string{"disk:/", "cpu", "memory", "swap", "uptime", "net"})
 		if err != nil {
 			return err
 		}
@@ -102,6 +102,7 @@ func runCmd(args []string) error {
 		Interval: *interval,
 		SkewMax:  *skewMax,
 		Checks:   checks,
+		Pulses:   pulses,
 		Notify:   tracker,
 		Logger:   logger,
 	})
@@ -172,16 +173,19 @@ func runCmd(args []string) error {
 	return nil
 }
 
-// parseWatches turns -watch flags into checks. The id names this host: the
-// local resource checks are about it and it becomes their target.
-func parseWatches(id string, watches []string) ([]check.Check, error) {
+// parseWatches turns -watch flags into checks, plus the declared pulses
+// (name to silence window), which are not checks that run but silences the
+// lantern waits out. The id names this host: the local resource checks are
+// about it and it becomes their target.
+func parseWatches(id string, watches []string) ([]check.Check, map[string]time.Duration, error) {
 	var checks []check.Check
+	var pulses map[string]time.Duration
 	for _, w := range watches {
 		kind, rest, _ := strings.Cut(w, ":")
 		switch kind {
 		case "tcp":
 			if _, _, err := net.SplitHostPort(rest); err != nil {
-				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, check.TCP{Addr: rest})
 		case "http", "https":
@@ -195,7 +199,7 @@ func parseWatches(id string, watches []string) ([]check.Check, error) {
 				u = "https://" + u
 			}
 			if strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://") == "" {
-				return nil, fmt.Errorf("cannot watch %q: http needs a url", w)
+				return nil, nil, fmt.Errorf("cannot watch %q: http needs a url", w)
 			}
 			checks = append(checks, check.HTTP{URL: u})
 		case "cert":
@@ -206,45 +210,45 @@ func parseWatches(id string, watches []string) ([]check.Check, error) {
 				idx := strings.LastIndex(rest, ":")
 				d, err := strconv.Atoi(rest[idx+1:])
 				if err != nil || d <= 0 || d > 365 {
-					return nil, fmt.Errorf("cannot watch %q: %q is not a day count", w, rest[idx+1:])
+					return nil, nil, fmt.Errorf("cannot watch %q: %q is not a day count", w, rest[idx+1:])
 				}
 				addr, days = rest[:idx], d
 			}
 			if addr == "" {
-				return nil, fmt.Errorf("cannot watch %q: cert needs a host", w)
+				return nil, nil, fmt.Errorf("cannot watch %q: cert needs a host", w)
 			}
 			if !strings.Contains(addr, ":") {
 				addr = net.JoinHostPort(addr, "443")
 			}
 			if _, _, err := net.SplitHostPort(addr); err != nil {
-				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, check.Cert{Addr: addr, WarnWithin: time.Duration(days) * 24 * time.Hour})
 		case "disk":
 			path, pct, err := splitThreshold(rest)
 			if err != nil {
-				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			if path == "" {
-				return nil, fmt.Errorf("cannot watch %q: disk needs a path, like disk:/", w)
+				return nil, nil, fmt.Errorf("cannot watch %q: disk needs a path, like disk:/", w)
 			}
 			checks = append(checks, &check.Disk{Host: id, Path: path, Max: pct})
 		case "cpu":
 			pct, err := parsePercent(rest)
 			if err != nil {
-				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, &check.CPU{Host: id, Max: pct})
 		case "memory":
 			pct, err := parsePercent(rest)
 			if err != nil {
-				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, &check.Memory{Host: id, Max: pct})
 		case "swap":
 			pct, err := parsePercent(rest)
 			if err != nil {
-				return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, &check.Swap{Host: id, Max: pct})
 		case "uptime":
@@ -252,7 +256,7 @@ func parseWatches(id string, watches []string) ([]check.Check, error) {
 			if rest != "" {
 				var err error
 				if min, err = time.ParseDuration(rest); err != nil {
-					return nil, fmt.Errorf("cannot watch %q: %w", w, err)
+					return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 				}
 			}
 			checks = append(checks, &check.Uptime{Host: id, Min: min})
@@ -261,16 +265,39 @@ func parseWatches(id string, watches []string) ([]check.Check, error) {
 			if rest != "" {
 				v, err := strconv.ParseFloat(rest, 64)
 				if err != nil || v <= 0 {
-					return nil, fmt.Errorf("cannot watch %q: %q is not a rate in Mbit/s", w, rest)
+					return nil, nil, fmt.Errorf("cannot watch %q: %q is not a rate in Mbit/s", w, rest)
 				}
 				mbit = v
 			}
 			checks = append(checks, &check.Net{Host: id, Max: mbit})
+		case "pulse":
+			// pulse:name, pulse:name:window. The name is a job, not a
+			// host, so slashes and colons stay out of it; the cut above
+			// already keeps colons out.
+			name, win, _ := strings.Cut(rest, ":")
+			if name == "" {
+				return nil, nil, fmt.Errorf("cannot watch %q: pulse needs a name, like pulse:backup-db", w)
+			}
+			if strings.Contains(name, "/") {
+				return nil, nil, fmt.Errorf("cannot watch %q: a pulse name may not contain a slash", w)
+			}
+			window := 25 * time.Hour
+			if win != "" {
+				d, err := time.ParseDuration(win)
+				if err != nil || d <= 0 {
+					return nil, nil, fmt.Errorf("cannot watch %q: %q is not a window, use a duration like 25h", w, win)
+				}
+				window = d
+			}
+			if pulses == nil {
+				pulses = make(map[string]time.Duration)
+			}
+			pulses[name] = window
 		default:
-			return nil, fmt.Errorf("cannot watch %q: known checks are tcp, http, cert, disk, cpu, memory, swap, uptime, net", w)
+			return nil, nil, fmt.Errorf("cannot watch %q: known checks are tcp, http, cert, disk, cpu, memory, swap, uptime, net, pulse", w)
 		}
 	}
-	return checks, nil
+	return checks, pulses, nil
 }
 
 // splitThreshold peels an optional trailing :percent off a path, so that

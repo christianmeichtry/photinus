@@ -481,3 +481,38 @@ scripts/preflight.sh. The relight procedure lives in scripts/relight.sh
 now too: it earned its scars (a pgrep that matched its own nohup wrapper
 and killed the wrapper instead of the lantern) and belongs under review
 like everything else.
+
+## The pulse check: a dead man's switch
+
+The most requested pattern in self-hosted monitoring is the inverted
+check: a backup cron that must run nightly cannot be probed, it has to
+report in, and the alarm condition is that it stopped. healthchecks.io
+made this a product; in a mesh it falls out almost for free, and with no
+single point of failure, because the ping may land on any lantern.
+
+The pieces. `-watch pulse:backup-db:26h` declares the pulse, the same
+declaration on every box like -expect and seeds. The job pings
+`/pulse/backup-db` on whichever lantern is handy, guarded by the same
+bearer token as the status data. The receiving lantern stores the ping as
+its own up observation, so it rides the next flash like anything else,
+and every lantern remembers the newest ping time it has heard for each
+name, separately from the observation, so the baseline survives after the
+receipt itself ages out.
+
+Silence must produce votes, not mere absence. An absent observation is
+unknown, and unknown never alarms; only an explicit down can, which is
+the same principle behind the versioned envelope dropping what it does
+not understand. So every lantern that declares the pulse checks the
+newest known ping time against the window on every flash, and past the
+window it emits its own down observation. That is one opinion per
+lantern, and quorum turns the opinions into the one page. A single box
+with a wrong clock sees silence where there is none, convinces nobody,
+and stays a minority of one, exactly the skew story again.
+
+Rule 4 deliberately does not apply: the target is a job name, not a
+lantern id, so no observer is the authority on it and normal quorum runs.
+The baseline for a never-pinged pulse is the lantern's own start time,
+so a fresh boot waits out one full window before complaining, and a name
+can be pinged before it is declared: the receipt still records and
+gossips, the reply just says so, and evaluation begins where and when the
+declaration lands.

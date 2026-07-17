@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/christianmeichtry/photinus/internal/lantern"
 	"github.com/christianmeichtry/photinus/internal/version"
@@ -75,6 +77,45 @@ func statusHandler(token string, lan *lantern.Lantern) http.Handler {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(lan.Status())
+	})
+
+	// The dead man's switch door: a job pings /pulse/<name> on any lantern
+	// when it finishes, and the receipt gossips from there. GET and POST
+	// both work so plain curl in a cron line is enough. The token rule is
+	// the same as /status.json: a ping writes an observation, so it is
+	// guarded like the data, not like the shell.
+	mux.HandleFunc("/pulse/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if token != "" && !bearerOK(r, token) {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "a bearer token is required", http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			http.Error(w, "ping a pulse with GET or POST", http.StatusMethodNotAllowed)
+			return
+		}
+		name := strings.TrimPrefix(r.URL.Path, "/pulse/")
+		if name == "" || strings.ContainsAny(name, "/:") {
+			http.Error(w, "the door is /pulse/<name>, and a name has no slash or colon", http.StatusBadRequest)
+			return
+		}
+		declared := lan.Pulse(name, time.Now().UTC())
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if declared {
+			fmt.Fprintf(w, "pulse %s recorded\n", name)
+			return
+		}
+		// Recording first and declaring after is a fine order of work, so
+		// the ping still lands; the hint tells the operator the silence is
+		// not being watched from here yet.
+		fmt.Fprintf(w, "pulse %s recorded, not declared on this lantern\n", name)
 	})
 
 	return mux

@@ -99,7 +99,7 @@ after a warning).
 | **tcp** | dial a `host:port` | remote |
 | **http** | fetch a url; 2xx/3xx is up, anything else is down | remote |
 | **cert** | TLS certificate health; broken or expired is down, expiring soon warns | remote |
-| **pulse** | a dead man's switch: a job pings any lantern, silence past the window is down by quorum | remote |
+| **pulse** | a heartbeat / dead man's switch: a job pings any lantern, silence past the window is down by quorum | remote |
 | **uptime** | host uptime, flags a reboot since the last flash | local |
 | **disk** | filesystem usage percent against a threshold | local |
 | **cpu** | CPU utilization percent (short rolling average) against a threshold | local |

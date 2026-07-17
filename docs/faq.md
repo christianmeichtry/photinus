@@ -110,7 +110,7 @@ forgetting is on the roadmap.
 
 ## How do I get paged when a cron job stops running?
 
-Declare a pulse on every box, `-watch pulse:backup-db:26h`, and have the
+Declare a pulse (a heartbeat, a dead man's switch) on every box, `-watch pulse:backup-db:26h`, and have the
 job ping any lantern when it finishes:
 
 ```sh

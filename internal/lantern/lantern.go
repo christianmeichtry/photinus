@@ -63,6 +63,8 @@ type Lantern struct {
 	lastSeen    map[string]time.Time
 	lastRun     map[string]time.Time
 	lastPulse   map[string]time.Time
+	pulseStuck  map[string]int
+	pulseWarned map[string]bool
 	badVersions map[int]bool
 	sw          *swarm.Swarm
 }
@@ -96,6 +98,8 @@ func New(cfg Config) *Lantern {
 		lastSeen:    make(map[string]time.Time),
 		lastRun:     make(map[string]time.Time),
 		lastPulse:   make(map[string]time.Time),
+		pulseStuck:  make(map[string]int),
+		pulseWarned: make(map[string]bool),
 		badVersions: make(map[int]bool),
 	}
 }
@@ -224,13 +228,46 @@ func (l *Lantern) flash(ctx context.Context) {
 
 	// With the flash out, look at what the swarm now agrees on and let the
 	// elected lantern notify. Every lantern runs this; only the winner acts.
-	if l.notify != nil {
+	if l.notify != nil || len(l.pulses) > 0 {
 		st := l.Status()
-		decisions := make([]quorum.Decision, len(st.Subjects))
-		for i, s := range st.Subjects {
-			decisions[i] = s.Decision
+		if l.notify != nil {
+			decisions := make([]quorum.Decision, len(st.Subjects))
+			for i, s := range st.Subjects {
+				decisions[i] = s.Decision
+			}
+			l.notify.Observe(decisions, st.Swarm, now)
 		}
-		l.notify.Observe(decisions, st.Swarm, now)
+		l.warnUnderDeclaredPulses(st)
+	}
+}
+
+// warnUnderDeclaredPulses catches the one way a pulse fails silently: every
+// lantern that declares it calls it silent, yet quorum cannot be reached
+// because too few boxes declare it. A safety net that cannot fire must say
+// so in the log. The condition has to hold for a stretch of flashes first,
+// so the moments when declarers merely have not all voted yet do not warn.
+func (l *Lantern) warnUnderDeclaredPulses(st Status) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, s := range st.Subjects {
+		if s.Check != "pulse" {
+			continue
+		}
+		name := s.Target
+		if _, declaredHere := l.pulses[name]; !declaredHere || l.pulseWarned[name] {
+			continue
+		}
+		stuck := s.Votes > 0 && s.Votes == s.Voters && s.Votes < s.Needed
+		if !stuck {
+			l.pulseStuck[name] = 0
+			continue
+		}
+		l.pulseStuck[name]++
+		if l.pulseStuck[name] >= 15 {
+			l.pulseWarned[name] = true
+			l.log.Printf("pulse %s is silent by every lantern that declares it (%d of quorum %d), but too few declare it to ever page: add -watch pulse:%s to more boxes",
+				name, s.Votes, s.Needed, name)
+		}
 	}
 }
 

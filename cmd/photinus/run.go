@@ -48,7 +48,7 @@ func runCmd(args []string) error {
 	var seeds, watches, expect stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
 	fs.Var(&expect, "expect", "name of a lantern that must exist; a declared box that is down or never joins is reported down instead of vanishing (repeatable, same list on every box)")
-	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration], net[:mbit], pulse:name[:window]; naming a default check overrides it")
+	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration], net[:mbit], pulse:name[:window] (a heartbeat / dead man's switch); naming a default check overrides it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

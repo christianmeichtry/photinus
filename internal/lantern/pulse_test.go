@@ -1,8 +1,10 @@
 package lantern
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -193,5 +195,39 @@ func TestPulseAfterSilenceClears(t *testing.T) {
 	l.flash(context.Background())
 	if o := l.store["l1|pulse|backup-db"]; o.State != quorum.StateUp {
 		t.Errorf("state after a late ping = %s, want %s", o.State, quorum.StateUp)
+	}
+}
+
+func TestUnderDeclaredPulseWarnsOnce(t *testing.T) {
+	var buf bytes.Buffer
+	l := New(Config{ID: "l1", Pulses: map[string]time.Duration{"backup": time.Hour},
+		Logger: log.New(&buf, "", 0)})
+	stuck := Status{Subjects: []SubjectStatus{{Decision: quorum.Decision{
+		Target: "backup", Check: "pulse", Votes: 2, Voters: 2, Needed: 4,
+	}}}}
+	healthy := Status{Subjects: []SubjectStatus{{Decision: quorum.Decision{
+		Target: "backup", Check: "pulse", Votes: 0, Voters: 3, Needed: 4,
+	}}}}
+
+	// A brief stuck stretch resets without warning: declarers that merely
+	// have not all voted yet must not trip it.
+	for i := 0; i < 14; i++ {
+		l.warnUnderDeclaredPulses(stuck)
+	}
+	l.warnUnderDeclaredPulses(healthy)
+	if buf.Len() != 0 {
+		t.Fatalf("warned during a transient: %q", buf.String())
+	}
+
+	// A persistent stretch warns exactly once, however long it goes on.
+	for i := 0; i < 40; i++ {
+		l.warnUnderDeclaredPulses(stuck)
+	}
+	warned := buf.String()
+	if !strings.Contains(warned, "too few declare it to ever page") {
+		t.Fatalf("no under-declaration warning after a persistent stretch: %q", warned)
+	}
+	if strings.Count(warned, "too few") != 1 {
+		t.Errorf("warning repeated: %q", warned)
 	}
 }

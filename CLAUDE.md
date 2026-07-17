@@ -12,9 +12,11 @@ Named after *Photinus carolinus*, the firefly that flashes in unison with nothin
 coordinating it. Every design decision should be checkable against that: **is this thing
 still true if any single node disappears?** If the answer is no, it is wrong.
 
-Status: pre-alpha. The mesh works end to end: lanterns gossip, agree, run all
-seven check types, and the elected lantern pages exactly once. No config file
-yet, flags only.
+Status: alpha, and say so anywhere the public might stumble on it. The mesh
+works end to end on a real fleet: lanterns gossip, agree, run all twelve check
+types including the pulse heartbeat, and the elected lantern pages exactly
+once. The YAML config file is in review; flags only until it lands. Feature
+freeze is on: finish and harden, do not open new surface.
 
 ## Vocabulary (use these words in code, comments, docs, CLI, and commit messages)
 

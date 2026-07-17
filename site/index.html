@@ -68,6 +68,10 @@
     color:var(--lantern);
   }
   .brand::before{content:"● ";font-size:.6em;vertical-align:.25em}
+  .stage{
+    font-size:.62rem;letter-spacing:.18em;vertical-align:.14em;margin-left:.45rem;
+    padding:.12rem .5rem;border:1px solid var(--lantern);border-radius:99px;opacity:.85;
+  }
 
   .lede{max-width:34rem;padding:3rem 0}
 
@@ -177,7 +181,7 @@
     <div class="hero-veil" aria-hidden="true"></div>
 
     <div class="hero-inner wrap">
-      <div class="brand">photinus</div>
+      <div class="brand">photinus <span class="stage" title="running on a real fleet, sharp edges included">alpha</span></div>
 
       <div class="lede">
         <h1>Fireflies flash in unison. <em>Nobody conducts.</em></h1>
@@ -213,11 +217,16 @@
         <dt>Quorum</dt>
         <dd>An alert fires when the mesh agrees, not when one machine has an opinion. A single node losing sight of a host is data. Half of them losing sight of it is an outage.</dd>
       </div>
+      <div class="prop">
+        <dt>Heartbeat</dt>
+        <dd>Some failures are things that did not happen. A backup cron ends by pinging any lantern it can reach; when the pings stop past their window, the mesh agrees your backup is dead and pages you once.</dd>
+      </div>
     </dl>
 
     <section class="contact">
-      <h2>Not shipping yet.</h2>
-      <p>There is nothing to download and nothing to sign up for. If you run servers and this sounds like something you want, write to me and tell me what breaks in your current setup. That is what I am building against.</p>
+      <h2>Alpha. Running for real, not packaged yet.</h2>
+      <p>A live fleet has been watching itself with photinus for a while now: tcp, http, TLS certificates, disk, cpu, memory, swap, uptime, network rate, clock skew, heartbeats, and the mesh watching its own members. The source is public and you can build and run it today; there is no installer yet, the config file is landing, and releases still break things. If you run servers and want this, write me and tell me what breaks in your current setup. That is what I am building against.</p>
+      <p><a class="mail" href="https://github.com/christianmeichtry/photinus">github.com/christianmeichtry/photinus</a></p>
       <a class="mail" href="mailto:hello@photinus.dev?subject=photinus">hello@photinus.dev</a>
     </section>
 

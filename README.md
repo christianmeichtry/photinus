@@ -21,12 +21,50 @@ and it is the shape of this tool.
 
 ## Status
 
-Pre-alpha, but it runs. A swarm of lanterns can watch each other and real checks (tcp,
-disk, cpu, memory, swap, uptime, clock skew), agree by quorum with partition-safe
-counting, and page exactly once through a hash-elected sender. Swarms can span machines,
-with encrypted gossip behind a shared key. No config file yet (flags only), no packaged
-releases, and the design is still being worked out in the open. If you run servers and
-this sounds useful, open an issue and tell me what breaks in your current setup.
+**Alpha.** It runs, and it has been watching a real fleet of five machines for a while
+now, paging through real outages. What works today:
+
+- Twelve check types: tcp, http, TLS certificates, disk, cpu, memory, swap, uptime,
+  network rate, clock skew, peer liveness, and **pulse**, a heartbeat / dead man's
+  switch: a cron job pings any lantern, and silence past a window becomes a
+  quorum-agreed alert.
+- Partition-safe quorum counting (a minority partition goes quiet instead of paging),
+  each lantern the sole authority on its own local facts, and exactly-once paging
+  through a hash-elected sender with flap damping.
+- Encrypted gossip behind a shared key, a versioned wire format so mixed-release
+  fleets coexist, and rolling upgrades proven box by box on the live fleet.
+- A web panel served by every lantern, no dashboard host, answering on the same port
+  the gossip already uses, from local memory, with the network on fire.
+- Declared members: a box that is down, or never joined at all, is reported down
+  instead of being invisible.
+
+Not there yet: the YAML config file is in review (flags only until it lands), there is
+no packaged installer (build from source below), Windows local probes report "not
+applicable", and partition self-alerting is still an open problem, worked out in the
+open in [`docs/design.md`](docs/design.md). Expect sharp edges and breaking releases.
+
+If you run servers and this sounds useful, open an issue and tell me what breaks in
+your current setup.
+
+## Running it
+
+```sh
+go build ./cmd/photinus
+
+# first box
+./photinus run -id one
+
+# every other box
+./photinus run -id two -seed one.example.com:7946 -key 'a shared passphrase'
+
+# any box, any time
+./photinus status
+```
+
+One binary, one open port (7946), and the standard local checks (disk, cpu, memory,
+swap, uptime, network rate) run by default. Add `-watch` for services
+(`-watch http:https://example.com`, `-watch cert:example.com`,
+`-watch pulse:backup-db:26h`) and `-notify` to page.
 
 ## The idea, concretely
 

@@ -267,3 +267,19 @@ func TestFarewellBlocksSyncResurrection(t *testing.T) {
 		t.Error("tombstone survived the lantern's return")
 	}
 }
+
+func TestOwnObservationsCarryATTLFloor(t *testing.T) {
+	// A stall longer than maxAge but shorter than the floor must not blank
+	// the lantern's authority rows across the swarm.
+	fast := &pacedFake{every: 0, target: "fast"}
+	l := New(Config{ID: "l1", Interval: time.Second, Checks: []check.Check{fast}})
+	l.flash(context.Background())
+	o, ok := l.store["l1|fake|fast"]
+	if !ok {
+		t.Fatal("no observation stored")
+	}
+	want := int(3 * l.maxAge / time.Second)
+	if o.TTL != want {
+		t.Errorf("TTL = %d, want the floor of %d seconds", o.TTL, want)
+	}
+}

@@ -73,6 +73,7 @@ type Tracker struct {
 	elected     map[string]string      // subject -> lantern elected to notify while not up
 	transitions map[string][]time.Time // subject -> recent state changes
 	flapping    map[string]bool        // subject -> currently damped
+	lastSeen    map[string]time.Time   // subject -> last time a decision mentioned it
 }
 
 // New builds a tracker. The warmup is how long after the first observation
@@ -88,6 +89,7 @@ func New(self string, warmup time.Duration, send Sender, logger *log.Logger) *Tr
 		send:        send,
 		log:         logger,
 		state:       make(map[string]string),
+		lastSeen:    make(map[string]time.Time),
 		elected:     make(map[string]string),
 		transitions: make(map[string][]time.Time),
 		flapping:    make(map[string]bool),
@@ -107,6 +109,28 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 	}
 	if now.Sub(t.start) < t.warmup {
 		return nil
+	}
+
+	// A subject that no decision has mentioned for days is gone for good:
+	// a removed watch, a renamed pulse, a decommissioned box. Its tracker
+	// entries would otherwise live as long as the process; monitoring
+	// state must not be the thing that grows forever.
+	for _, d := range decisions {
+		t.lastSeen[d.Check+" "+d.Target] = now
+	}
+	for subject := range t.state {
+		if _, ok := t.lastSeen[subject]; !ok {
+			t.lastSeen[subject] = now
+		}
+	}
+	for subject, seen := range t.lastSeen {
+		if now.Sub(seen) > 72*time.Hour {
+			delete(t.state, subject)
+			delete(t.elected, subject)
+			delete(t.transitions, subject)
+			delete(t.flapping, subject)
+			delete(t.lastSeen, subject)
+		}
 	}
 
 	var sent []Event

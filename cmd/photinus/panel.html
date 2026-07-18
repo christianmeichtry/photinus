@@ -151,8 +151,11 @@ function rank(s){ if(!s.voters) return 3; if(s.state==="down") return 0; if(s.st
 function word(s){ if(!s.voters) return ["?","stale"]; if(s.state==="down") return ["DOWN","down"]; if(s.state==="warn") return ["WARN","warn"]; if(s.votes>0) return ["SUS","warn"]; return ["UP","up"]; }
 function trimDetail(s){
   let d = s.detail || "";
-  if (s.check.startsWith("disk:")) return d.replace(new RegExp("^disk "+s.check.slice(5).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+" is "), "");
-  return d.replace(new RegExp("^"+s.check+" is "), "");
+  const rx = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (s.check.startsWith("disk:")) return d.replace(new RegExp("^disk "+rx(s.check.slice(5))+" is "), "");
+  // Escaped like the disk branch: a future check name with a regex
+  // character must trim imperfectly, not throw and take render with it.
+  return d.replace(new RegExp("^"+rx(s.check)+" is "), "");
 }
 
 // The landing page metaphor, but truthful: every firefly is a real box.

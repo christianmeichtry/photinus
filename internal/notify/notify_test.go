@@ -320,3 +320,21 @@ func TestFlapDamping(t *testing.T) {
 		}
 	})
 }
+
+func TestTrackerForgetsVanishedSubjects(t *testing.T) {
+	tr := New("l1", 0, func(Event) {}, nil)
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	d := quorum.Decision{Target: "db:5432", Check: "tcp", State: quorum.StateDown,
+		Votes: 2, Voters: 2, Needed: 2}
+	tr.Observe([]quorum.Decision{d}, []string{"l1"}, now)
+	if _, ok := tr.state["tcp db:5432"]; !ok {
+		t.Fatal("subject not tracked after a decision")
+	}
+	// Mentioned again a day later: retained.
+	tr.Observe([]quorum.Decision{d}, []string{"l1"}, now.Add(24*time.Hour))
+	// Absent for four days: evicted.
+	tr.Observe(nil, []string{"l1"}, now.Add(24*time.Hour+73*time.Hour))
+	if _, ok := tr.state["tcp db:5432"]; ok {
+		t.Error("a subject unmentioned for three days is still tracked")
+	}
+}

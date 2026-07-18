@@ -183,7 +183,12 @@ func (l *Lantern) flash(ctx context.Context) {
 		default:
 			continue
 		}
-		ttl := 0
+		// Every own observation carries a TTL floor of three aging windows.
+		// A lantern that stalls past maxAge (garbage collection, swap, the
+		// hypervisor's whims) used to have its authority rows blank out
+		// fleet-wide as unknown; a short stall is not news, and the
+		// membership check still catches a box that actually died.
+		ttl := int(3 * l.maxAge / time.Second)
 		if every > l.interval {
 			ttl = int(5 * every / time.Second)
 		}

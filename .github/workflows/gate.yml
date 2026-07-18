@@ -20,7 +20,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          # The latest stable toolchain, not the go.mod minimum: the gate
+          # must test and scan against a patched standard library, or
+          # govulncheck rightly fails the build for stdlib CVEs.
+          go-version: stable
       - name: gofmt prints nothing
         run: test -z "$(gofmt -l .)"
       - name: vet
@@ -39,7 +42,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          # The latest stable toolchain, not the go.mod minimum: the gate
+          # must test and scan against a patched standard library, or
+          # govulncheck rightly fails the build for stdlib CVEs.
+          go-version: stable
       - name: every platform a lantern might run on
         run: |
           set -eu
@@ -54,7 +60,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          # The latest stable toolchain, not the go.mod minimum: the gate
+          # must test and scan against a patched standard library, or
+          # govulncheck rightly fails the build for stdlib CVEs.
+          go-version: stable
       - name: staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
       - name: govulncheck

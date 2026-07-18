@@ -102,8 +102,8 @@ func statusHandler(token string, lan *lantern.Lantern) http.Handler {
 			return
 		}
 		name := strings.TrimPrefix(r.URL.Path, "/pulse/")
-		if name == "" || strings.ContainsAny(name, "/:") {
-			http.Error(w, "the door is /pulse/<name>, and a name has no slash or colon", http.StatusBadRequest)
+		if err := validPulseName(name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		declared := lan.Pulse(name, time.Now().UTC())

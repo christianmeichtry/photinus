@@ -3,6 +3,7 @@ package lantern
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,5 +195,75 @@ func TestSyncStateRoundTrip(t *testing.T) {
 	l2.ReceiveFlash(l1.SyncState())
 	if _, ok := l2.store[storeKey(imp)]; ok {
 		t.Error("a state sync smuggled in an observation claiming to be the receiver's own")
+	}
+}
+
+func TestOversizedObservationsStillGossip(t *testing.T) {
+	// memberlist's queue never transmits and never prunes a broadcast that
+	// cannot fit the packet budget, so nothing over the limit may ever be
+	// queued. The detail gets trimmed; the observation still travels.
+	long := quorum.Observation{Observer: "l1", Target: "web:443", Check: "http",
+		State: quorum.StateDown, Detail: strings.Repeat("x", 5000), Seen: time.Now()}
+	fit, ok := fitForGossip(long, flashObsLimit)
+	if !ok {
+		t.Fatal("a long detail must be trimmed, not dropped")
+	}
+	if !strings.HasSuffix(fit.Detail, "...") || len(fit.Detail) >= 5000 {
+		t.Errorf("detail not trimmed: %d bytes", len(fit.Detail))
+	}
+	payloads := chunkFlash([]quorum.Observation{fit}, 1000)
+	if len(payloads) != 1 || len(payloads[0]) > 1000 {
+		t.Fatalf("clamped observation still busts the packet budget: %d payloads, first %d bytes",
+			len(payloads), len(payloads[0]))
+	}
+
+	// Quote-heavy details inflate when JSON escapes them; the clamp must
+	// converge anyway.
+	quoted := long
+	quoted.Detail = strings.Repeat(`"\`, 2500)
+	if fit, ok := fitForGossip(quoted, flashObsLimit); ok {
+		if b, _ := json.Marshal(fit); len(b) > flashObsLimit {
+			t.Errorf("escaped detail still oversized after clamp: %d bytes", len(b))
+		}
+	}
+
+	// A giant target cannot be saved by dropping the detail and must be
+	// reported unfit, never queued.
+	bad := quorum.Observation{Observer: "l1", Target: strings.Repeat("t", 2000), Check: "http", Seen: time.Now()}
+	if _, ok := fitForGossip(bad, flashObsLimit); ok {
+		t.Error("an observation that cannot fit a packet claimed to fit")
+	}
+}
+
+func TestFarewellBlocksSyncResurrection(t *testing.T) {
+	now := time.Now().UTC()
+	l1 := New(Config{ID: "l1"})
+	ghost := quorum.Observation{Observer: "l3", Target: "db:5432", Check: "cert",
+		State: quorum.StateDown, Seen: now.Add(-time.Minute), TTL: 18000}
+	l1.store[storeKey(ghost)] = ghost
+
+	l1.forget("l3")
+	if len(l1.store) != 0 {
+		t.Fatalf("forget left %d observations", len(l1.store))
+	}
+
+	// A peer that missed the farewell syncs the ghost back: refused.
+	payload, _ := json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{ghost}})
+	l1.ReceiveFlash(payload)
+	if len(l1.store) != 0 {
+		t.Fatalf("a pre-departure observation resurrected through sync: %+v", l1.store)
+	}
+
+	// The lantern actually comes back: a post-departure observation is
+	// accepted and clears the tombstone.
+	back := ghost
+	back.Seen = now.Add(time.Minute)
+	payload, _ = json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{back}})
+	l1.ReceiveFlash(payload)
+	if len(l1.store) != 1 {
+		t.Fatalf("a returned lantern's fresh observation was refused")
+	}
+	if _, ok := l1.departed["l3"]; ok {
+		t.Error("tombstone survived the lantern's return")
 	}
 }

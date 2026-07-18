@@ -275,11 +275,14 @@ func parseWatches(id string, watches []string) ([]check.Check, map[string]time.D
 			// host, so slashes and colons stay out of it; the cut above
 			// already keeps colons out.
 			name, win, _ := strings.Cut(rest, ":")
-			if name == "" {
-				return nil, nil, fmt.Errorf("cannot watch %q: pulse needs a name, like pulse:backup-db", w)
+			if err := validPulseName(name); err != nil {
+				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
-			if strings.Contains(name, "/") {
-				return nil, nil, fmt.Errorf("cannot watch %q: a pulse name may not contain a slash", w)
+			if name == id {
+				// Rule 4 would treat a receipt about this name as the
+				// host's own authoritative word. Refuse the collision
+				// instead of documenting our way around it.
+				return nil, nil, fmt.Errorf("cannot watch %q: a pulse may not carry this lantern's own name", w)
 			}
 			window := 25 * time.Hour
 			if win != "" {
@@ -362,4 +365,24 @@ func serveStatus(path string, lan *lantern.Lantern) (*http.Server, error) {
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(ln)
 	return srv, nil
+}
+
+// validPulseName gates what may name a pulse, at the flag and at the door.
+// Letters, digits, dot, dash, underscore, at most 100 bytes: enough for
+// any job name, small enough that a receipt always fits a gossip packet,
+// and free of the path and separator characters that would let a name
+// masquerade as routing.
+func validPulseName(name string) error {
+	if name == "" || len(name) > 100 {
+		return fmt.Errorf("a pulse name is 1 to 100 characters")
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+		default:
+			return fmt.Errorf("a pulse name uses letters, digits, dot, dash, underscore; %q does not", name)
+		}
+	}
+	return nil
 }

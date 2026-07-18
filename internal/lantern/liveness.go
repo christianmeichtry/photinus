@@ -2,6 +2,7 @@ package lantern
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/christianmeichtry/photinus/internal/quorum"
@@ -89,4 +90,34 @@ func chunkFlash(obs []quorum.Observation, limit int) [][]byte {
 	}
 	flush()
 	return payloads
+}
+
+// fitForGossip clamps an observation so it fits one flash chunk.
+// memberlist's broadcast queue only ever sends what fits the UDP packet
+// budget; anything larger is skipped every round, never transmitted and
+// never pruned, which is the worst failure a monitor can have: an
+// observation that silently exists nowhere but here. The detail sentence
+// is the one unbounded field (error strings, urls), so it is trimmed
+// first; an observation that does not fit even without its detail cannot
+// ride a packet at all and is reported unfit so the caller can log it.
+func fitForGossip(o quorum.Observation, limit int) (quorum.Observation, bool) {
+	b, err := json.Marshal(o)
+	if err != nil {
+		return o, false
+	}
+	if len(b) <= limit {
+		return o, true
+	}
+	cut := len(o.Detail) - (len(b) - limit) - 8
+	if cut > 0 {
+		o.Detail = strings.ToValidUTF8(o.Detail[:cut], "") + "..."
+		if b, err = json.Marshal(o); err == nil && len(b) <= limit {
+			return o, true
+		}
+	}
+	o.Detail = ""
+	if b, err = json.Marshal(o); err == nil && len(b) <= limit {
+		return o, true
+	}
+	return o, false
 }

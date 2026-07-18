@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -79,5 +80,23 @@ func TestParseWatchesPulse(t *testing.T) {
 				t.Errorf("window = %v, want %v", got, tt.wantWindow)
 			}
 		})
+	}
+}
+
+func TestPulseNameBounds(t *testing.T) {
+	long := strings.Repeat("a", 101)
+	bad := []string{
+		"pulse:" + long,
+		"pulse:has space",
+		"pulse:pa%2Fth",
+		"pulse:l1", // the lantern's own name, rule 4 collision
+	}
+	for _, w := range bad {
+		if _, _, err := parseWatches("l1", []string{w}); err == nil {
+			t.Errorf("parseWatches accepted %q", w)
+		}
+	}
+	if _, _, err := parseWatches("l1", []string{"pulse:backup-db.daily_v2:30m"}); err != nil {
+		t.Errorf("a reasonable name was refused: %v", err)
 	}
 }

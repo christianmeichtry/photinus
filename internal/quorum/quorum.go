@@ -116,13 +116,13 @@ func Decide(target, checkName string, obs []Observation, lastKnownSize int, maxA
 	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Observer < ordered[j].Observer })
 
-	sawDown := false
+	downVotes := 0
 	for _, o := range ordered {
 		d.Voters++
 		if o.State != StateUp {
 			d.Votes++
 			if o.State == StateDown {
-				sawDown = true
+				downVotes++
 			}
 			if d.Detail == "" {
 				d.Detail = o.Detail
@@ -132,12 +132,16 @@ func Decide(target, checkName string, obs []Observation, lastKnownSize int, maxA
 	if d.Detail == "" && len(ordered) > 0 {
 		d.Detail = ordered[0].Detail
 	}
-	if d.Votes >= d.Needed {
-		if sawDown {
-			d.State = StateDown
-		} else {
-			d.State = StateWarn
-		}
+	// DOWN needs a quorum of lanterns actually saying down. Warnings can
+	// join the count and escalate the subject to WARN, but they must never
+	// launder a single down opinion into a swarm-confirmed outage: two
+	// expiring-cert warnings plus one broken-cert opinion is a warning,
+	// not an outage the swarm agreed on.
+	switch {
+	case downVotes >= d.Needed:
+		d.State = StateDown
+	case d.Votes >= d.Needed:
+		d.State = StateWarn
 	}
 	return d
 }

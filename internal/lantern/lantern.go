@@ -65,6 +65,7 @@ type Lantern struct {
 	lastPulse   map[string]time.Time
 	pulseStuck  map[string]int
 	pulseWarned map[string]bool
+	departed    map[string]time.Time
 	badVersions map[int]bool
 	sw          *swarm.Swarm
 }
@@ -100,6 +101,7 @@ func New(cfg Config) *Lantern {
 		lastPulse:   make(map[string]time.Time),
 		pulseStuck:  make(map[string]int),
 		pulseWarned: make(map[string]bool),
+		departed:    make(map[string]time.Time),
 		badVersions: make(map[int]bool),
 	}
 }
@@ -211,12 +213,21 @@ func (l *Lantern) flash(ctx context.Context) {
 	// its own checks, not just what ran this cycle, so late joiners hear
 	// about slow-paced subjects without waiting a cadence.
 	var own []quorum.Observation
+	var unfit []string
 	for _, o := range l.store {
-		if o.Observer == l.id {
-			own = append(own, o)
+		if o.Observer != l.id {
+			continue
+		}
+		if fit, ok := fitForGossip(o, flashObsLimit); ok {
+			own = append(own, fit)
+		} else {
+			unfit = append(unfit, o.Check+" "+o.Target)
 		}
 	}
 	l.mu.Unlock()
+	for _, s := range unfit {
+		l.log.Printf("observation %s is too large for a gossip packet even without its detail and was not gossiped: shorten the name or target", s)
+	}
 
 	if sw != nil {
 		// A flash must ride inside one UDP gossip packet, so a view that
@@ -317,6 +328,16 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 		if o.Observer == l.id {
 			continue
 		}
+		if dep, ok := l.departed[o.Observer]; ok {
+			if !o.Seen.After(dep) {
+				continue
+			}
+			// Post-departure word from the lantern itself: it is back.
+			delete(l.departed, o.Observer)
+		}
+		if dep, ok := l.departed[o.Target]; ok && !o.Seen.After(dep) {
+			continue
+		}
 		key := storeKey(o)
 		if prev, ok := l.store[key]; !ok || o.Seen.After(prev.Seen) {
 			l.store[key] = o
@@ -364,6 +385,12 @@ func (l *Lantern) forget(name string) {
 			delete(l.store, k)
 		}
 	}
+	// The tombstone guards against anti-entropy resurrection: a peer that
+	// missed the farewell still holds this lantern's observations, some
+	// with hours of TTL, and its next push/pull sync would hand the ghosts
+	// back to everyone who correctly forgot. Anything stamped before the
+	// departure is refused; anything newer means the lantern came back.
+	l.departed[name] = time.Now().UTC()
 	delete(l.clocks, name)
 	delete(l.lastSeen, name)
 	sw := l.sw
@@ -389,6 +416,20 @@ func (l *Lantern) prune(now time.Time) {
 		}
 		if now.Sub(o.Seen) > horizon {
 			delete(l.store, k)
+		}
+	}
+	// Tombstones outlive the longest TTL any ghost could carry, then go.
+	for name, dep := range l.departed {
+		if now.Sub(dep) > 72*time.Hour {
+			delete(l.departed, name)
+		}
+	}
+	// Pings for names nobody declares (typos, jobs pinging before their
+	// declaration ships) stop being remembered after the same horizon, so
+	// the pulse maps cannot grow without bound.
+	for name, t0 := range l.lastPulse {
+		if _, declared := l.pulses[name]; !declared && now.Sub(t0) > 72*time.Hour {
+			delete(l.lastPulse, name)
 		}
 	}
 }
@@ -464,3 +505,7 @@ func (l *Lantern) Status() Status {
 
 	return st
 }
+
+// flashObsLimit is what one observation may occupy inside a flash chunk,
+// leaving room for the envelope within chunkFlash's packet budget.
+const flashObsLimit = 900

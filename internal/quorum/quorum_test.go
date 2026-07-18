@@ -242,3 +242,44 @@ func TestDecideTTL(t *testing.T) {
 		t.Errorf("State = %s, want warn from the TTL observation", got.State)
 	}
 }
+
+func TestDecideMixedSeverity(t *testing.T) {
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	maxAge := 30 * time.Second
+	vote := func(observer, state string) Observation {
+		return Observation{Observer: observer, Target: "web:443", Check: "cert",
+			State: state, Seen: now.Add(-time.Second)}
+	}
+	tests := []struct {
+		name string
+		obs  []Observation
+		want string
+	}{
+		{
+			// The bug this pins: warn votes must not launder one down
+			// opinion into a swarm-confirmed outage.
+			name: "two warns and one down of five is a warning",
+			obs:  []Observation{vote("l1", StateWarn), vote("l2", StateWarn), vote("l3", StateDown)},
+			want: StateWarn,
+		},
+		{
+			name: "three downs of five is an outage, warns beside it change nothing",
+			obs: []Observation{vote("l1", StateDown), vote("l2", StateDown),
+				vote("l3", StateDown), vote("l4", StateWarn)},
+			want: StateDown,
+		},
+		{
+			name: "two downs and one warn of five is a warning, down quorum not reached",
+			obs:  []Observation{vote("l1", StateDown), vote("l2", StateDown), vote("l3", StateWarn)},
+			want: StateWarn,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Decide("web:443", "cert", tt.obs, 5, maxAge, now)
+			if got.State != tt.want {
+				t.Errorf("State = %s, want %s (votes %d, needed %d)", got.State, tt.want, got.Votes, got.Needed)
+			}
+		})
+	}
+}

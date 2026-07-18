@@ -66,11 +66,17 @@ func runCmd(args []string) error {
 	if !cfgExplicit {
 		cfgPath = defaultConfigPath()
 	}
+	var cfgKeyReadable bool
 	if fc, err := loadConfig(cfgPath); err != nil {
 		if cfgExplicit || !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	} else {
+		if fc.Key != "" {
+			if info, err := os.Stat(cfgPath); err == nil && info.Mode().Perm()&0o044 != 0 {
+				cfgKeyReadable = true
+			}
+		}
 		set := make(map[string]bool)
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 		mergeConfig(fc, set, id, bind, advertise, key, notifyCmd, socket, panel, panelToken,
@@ -108,6 +114,9 @@ func runCmd(args []string) error {
 	}
 
 	logger := log.New(os.Stderr, "", log.Ltime)
+	if cfgKeyReadable {
+		logger.Printf("the config file %s holds the swarm key and other users on this box can read it: chmod 600 it", cfgPath)
+	}
 
 	var tracker *notify.Tracker
 	if *notifyCmd != "" {

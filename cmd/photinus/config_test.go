@@ -139,3 +139,30 @@ func TestMergeConfig(t *testing.T) {
 		}
 	})
 }
+
+func TestConfigPermissions(t *testing.T) {
+	// The warning logic reads the mode bits directly; pin the mask here so
+	// a refactor cannot quietly stop noticing group or world readability.
+	for _, tt := range []struct {
+		mode     os.FileMode
+		readable bool
+	}{
+		{0o600, false},
+		{0o640, true},
+		{0o644, true},
+		{0o400, false},
+	} {
+		p := writeConfig(t, "key: something\n")
+		if err := os.Chmod(p, tt.mode); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := info.Mode().Perm()&0o044 != 0
+		if got != tt.readable {
+			t.Errorf("mode %o: readable-by-others = %v, want %v", tt.mode, got, tt.readable)
+		}
+	}
+}

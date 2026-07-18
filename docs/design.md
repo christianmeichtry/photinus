@@ -516,3 +516,23 @@ so a fresh boot waits out one full window before complaining, and a name
 can be pinged before it is declared: the receipt still records and
 gossips, the reply just says so, and evaluation begins where and when the
 declaration lands.
+
+## The bug run (0.0.15)
+
+A planned hunt, executed in full. Four P0 findings, each pinned by a
+test before its fix: observations too large for a gossip packet were
+queued into oblivion by memberlist's queue (never sent, never pruned);
+gracefully departed lanterns could resurrect as ghost votes through
+push/pull anti-entropy on any peer that missed the farewell (bounded
+tombstones now refuse pre-departure observations); warn votes could
+launder a single down opinion into a swarm-confirmed outage (DOWN now
+needs a quorum of downs); and pulse names are bounded at the flag and
+the door, never the lantern's own name. P1 hardening: a TTL floor so a
+stalled lantern's authority rows do not blank fleet-wide, tracker and
+pulse maps that forget vanished subjects, an escaped regex in the
+panel's detail trimming. The gate grew an analyze job (staticcheck,
+govulncheck, both clean) and three fuzz targets that ran 8.5 million
+executions without a crash. A five-lantern soak at 200ms flashes under
+random pauses and kills ended five lit, no stale subjects, and one
+correct DOWN: the soak's own pulse, whose pinger had exited with the
+churn. Push/pull sync measured at 118 KiB for 600 observations.

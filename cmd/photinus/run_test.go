@@ -100,3 +100,14 @@ func TestPulseNameBounds(t *testing.T) {
 		t.Errorf("a reasonable name was refused: %v", err)
 	}
 }
+
+// FuzzParseWatches asserts flag parsing never panics on hostile input.
+func FuzzParseWatches(f *testing.F) {
+	for _, s := range []string{"tcp:h:1", "http:https://x", "cert:h:443:10",
+		"disk:/:90", "pulse:a:26h", "net:100", "uptime:3m", "::::", "pulse:", "cert:"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, w string) {
+		parseWatches("l1", []string{w})
+	})
+}

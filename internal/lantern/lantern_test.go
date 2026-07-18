@@ -283,3 +283,45 @@ func TestOwnObservationsCarryATTLFloor(t *testing.T) {
 		t.Errorf("TTL = %d, want the floor of %d seconds", o.TTL, want)
 	}
 }
+
+// FuzzReceiveFlash asserts the merge path never panics and never grows the
+// store from garbage: whatever arrives over the wire, wrong monitoring
+// conclusions are worse than crashes and crashes are worse than silence.
+func FuzzReceiveFlash(f *testing.F) {
+	good, _ := json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{{
+		Observer: "l2", Target: "db:5432", Check: "tcp", State: quorum.StateDown, Seen: time.Now()}}})
+	f.Add(good)
+	f.Add([]byte(`[{"observer":"l2","target":"x","check":"tcp","state":"down"}]`))
+	f.Add([]byte(`{"v":99,"obs":[]}`))
+	f.Add([]byte(`{"leave":"l9"}`))
+	f.Add([]byte("not json at all"))
+	f.Add([]byte{0, 1, 2, 0xff})
+	f.Fuzz(func(t *testing.T, payload []byte) {
+		l := New(Config{ID: "l1"})
+		l.ReceiveFlash(payload)
+		for _, o := range l.store {
+			if o.Observer == "l1" {
+				t.Fatalf("wire data forged an own observation: %+v", o)
+			}
+		}
+	})
+}
+
+// FuzzFitForGossip asserts the clamp always converges: whatever the
+// strings, the result either fits the limit or is reported unfit.
+func FuzzFitForGossip(f *testing.F) {
+	f.Add("db:5432", "tcp", strings.Repeat("x", 3000))
+	f.Add(strings.Repeat("t", 2000), "http", "")
+	f.Add("web", "cert", strings.Repeat(`"\`, 1500))
+	f.Fuzz(func(t *testing.T, target, check, detail string) {
+		o := quorum.Observation{Observer: "l1", Target: target, Check: check,
+			State: quorum.StateUp, Detail: detail, Seen: time.Now()}
+		fit, ok := fitForGossip(o, flashObsLimit)
+		if !ok {
+			return
+		}
+		if b, err := json.Marshal(fit); err != nil || len(b) > flashObsLimit {
+			t.Fatalf("claimed fit but marshals to %d bytes (err %v)", len(b), err)
+		}
+	})
+}

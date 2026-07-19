@@ -74,11 +74,10 @@ func readSwapUsage() (swapUsage, error) {
 	}, nil
 }
 
-// newCPUProbe approximates utilization as the one minute load average
-// spread over the cores. macOS does not expose cpu tick counters through
-// sysctl, and real utilization needs mach calls that are not worth the
-// dependency yet. The proxy overcounts when processes wait on disk and
-// undercounts short bursts; both are acceptable for a threshold check.
+// newCPUProbe reports pressure as the one minute load average spread over
+// the cores, in percent, the same measure every platform now uses: the
+// kernel's damped mean of demand, not a raw busy percentage. Load past
+// the core count is the signal, so it is not capped.
 func newCPUProbe() func() (float64, bool, error) {
 	return func() (float64, bool, error) {
 		raw, err := unix.SysctlRaw("vm.loadavg")
@@ -94,11 +93,7 @@ func newCPUProbe() func() (float64, bool, error) {
 			return 0, false, fmt.Errorf("parsing vm.loadavg: fscale is zero")
 		}
 		load := float64(load1) / float64(fscale)
-		pct := 100 * load / float64(runtime.NumCPU())
-		if pct > 100 {
-			pct = 100
-		}
-		return pct, true, nil
+		return 100 * load / float64(runtime.NumCPU()), true, nil
 	}
 }
 

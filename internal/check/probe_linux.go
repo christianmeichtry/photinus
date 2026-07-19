@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -106,64 +107,33 @@ func parseMeminfo(data []byte, keys ...string) (map[string]uint64, error) {
 	return out, nil
 }
 
-// newCPUProbe measures real utilization from /proc/stat deltas between
-// flashes. The first call only takes a baseline.
+// newCPUProbe reports pressure as the one minute load average spread over
+// the cores, in percent. The kernel keeps this damped mean for free, which
+// fits a tool that stores no history, and it measures demand rather than
+// use: cores at full tilt with an empty queue are a machine doing its job,
+// while a deep run queue is a machine in trouble. Linux load also counts
+// tasks stuck in uninterruptible disk wait, so an IO-sick box shows up
+// here too; the detail sentence says load, not busy, to stay honest. The
+// old two-second tick delta paged operators about healthy boxes whenever
+// a cron burst pinned the cores for one sampling window.
 func newCPUProbe() func() (float64, bool, error) {
-	var prevBusy, prevTotal uint64
-	var have bool
 	return func() (float64, bool, error) {
-		busy, total, err := readProcStat()
+		data, err := os.ReadFile("/proc/loadavg")
 		if err != nil {
-			return 0, false, err
+			return 0, false, fmt.Errorf("reading /proc/loadavg: %w", err)
 		}
-		defer func() { prevBusy, prevTotal, have = busy, total, true }()
-		if !have || total <= prevTotal {
-			return 0, false, nil
+		fields := strings.Fields(string(data))
+		if len(fields) == 0 {
+			return 0, false, fmt.Errorf("parsing /proc/loadavg: empty")
 		}
-		dBusy := float64(busy - prevBusy)
-		dTotal := float64(total - prevTotal)
-		return 100 * dBusy / dTotal, true, nil
-	}
-}
-
-func readProcStat() (busy, total uint64, err error) {
-	data, err := os.ReadFile("/proc/stat")
-	if err != nil {
-		return 0, 0, fmt.Errorf("reading /proc/stat: %w", err)
-	}
-	line, _, _ := bytes.Cut(data, []byte("\n"))
-	return parseProcStatCPU(string(line))
-}
-
-// parseProcStatCPU reads the aggregate cpu line: user nice system idle
-// iowait irq softirq steal. Idle and iowait count as not busy.
-func parseProcStatCPU(line string) (busy, total uint64, err error) {
-	fields := strings.Fields(line)
-	if len(fields) < 5 || fields[0] != "cpu" {
-		return 0, 0, fmt.Errorf("parsing /proc/stat: unexpected line %q", line)
-	}
-	var ticks []uint64
-	for _, f := range fields[1:] {
-		v, err := strconv.ParseUint(f, 10, 64)
+		load, err := strconv.ParseFloat(fields[0], 64)
 		if err != nil {
-			return 0, 0, fmt.Errorf("parsing /proc/stat: %w", err)
+			return 0, false, fmt.Errorf("parsing /proc/loadavg: %w", err)
 		}
-		ticks = append(ticks, v)
+		return 100 * load / float64(runtime.NumCPU()), true, nil
 	}
-	for i, v := range ticks {
-		total += v
-		// fields after "cpu": user nice system idle iowait ...
-		if i != 3 && i != 4 {
-			busy += v
-		}
-	}
-	return busy, total, nil
 }
 
-// newNetProbe measures the traffic rate on the default-route interface
-// from /proc/net/dev counter deltas between flashes. The first call only
-// takes a baseline, and a changed default route or a counter reset starts
-// a fresh one instead of reporting a nonsense burst.
 func newNetProbe() func() (float64, float64, string, bool, error) {
 	var prevRx, prevTx uint64
 	var prevAt time.Time

@@ -104,7 +104,7 @@ after a warning).
 | **pulse** | a heartbeat / dead man's switch: a job pings any lantern, silence past the window is down by quorum | remote |
 | **uptime** | host uptime, flags a reboot since the last flash | local |
 | **disk** | filesystem usage percent against a threshold | local |
-| **cpu** | CPU utilization percent (short rolling average) against a threshold | local |
+| **cpu** | processor pressure: the 1-minute load average per core, in percent, against a threshold (on Linux this includes disk-wait, by design) | local |
 | **memory** | RAM utilization percent against a threshold | local |
 | **swap** | swap/pagefile utilization percent, an early warning before OOM | local |
 | **net** | traffic rate on the default-route interface; reports always, warns only past an optional Mbit/s limit | local |

@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 )
 
-// CPU trips when the processor stays busier than a threshold. What "busy"
-// means is up to the platform probe: real utilization where the OS exposes
-// it, a load average scaled by core count where it does not. The probe may
-// need a first sample before it can answer.
+// CPU trips when sustained demand for the processor crosses a threshold.
+// The measure is the one minute load average spread over the cores, in
+// percent: the kernel's own damped mean, which a tool that stores no
+// history gets for free, and which ignores the two-second bursts that a
+// raw busy percentage pages about. On Linux the load also counts tasks in
+// uninterruptible disk wait, so an IO-starved box trips this check too,
+// which the detail sentence owns up to by saying load, not busy.
 type CPU struct {
 	// Host is this lantern's name. A local check is about its own host.
 	Host string
@@ -40,8 +44,9 @@ func (c *CPU) Run(ctx context.Context) Result {
 	if !ready {
 		return Result{Verdict: OK, Detail: "cpu measurement warming up, first verdict next flash"}
 	}
+	cores := runtime.NumCPU()
 	if pct > max {
-		return Result{Verdict: Warn, Detail: fmt.Sprintf("cpu is %.0f%% busy, threshold is %.0f%%", pct, max)}
+		return Result{Verdict: Warn, Detail: fmt.Sprintf("cpu load is %.0f%% of %d cores, threshold is %.0f%%", pct, cores, max)}
 	}
-	return Result{Verdict: OK, Detail: fmt.Sprintf("cpu is %.0f%% busy", pct)}
+	return Result{Verdict: OK, Detail: fmt.Sprintf("cpu load is %.0f%% of %d cores", pct, cores)}
 }

@@ -26,21 +26,3 @@ SwapFree:        4095000 kB
 		t.Error("missing field did not error")
 	}
 }
-
-func TestParseProcStatCPU(t *testing.T) {
-	// user nice system idle iowait irq softirq steal
-	busy, total, err := parseProcStatCPU("cpu  100 0 50 800 40 5 5 0")
-	if err != nil {
-		t.Fatalf("parseProcStatCPU: %v", err)
-	}
-	if want := uint64(160); busy != want {
-		t.Errorf("busy = %d, want %d", busy, want)
-	}
-	if want := uint64(1000); total != want {
-		t.Errorf("total = %d, want %d", total, want)
-	}
-
-	if _, _, err := parseProcStatCPU("intr 12345"); err == nil {
-		t.Error("non-cpu line did not error")
-	}
-}

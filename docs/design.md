@@ -563,3 +563,18 @@ brief, and hand-rolling a YAML parser is how projects die. The research
 behind doing this now: config-as-code is the loudest theme in what
 self-hosters ask of monitoring tools, it is most of why Gatus is loved
 and one of the top requests Uptime Kuma cannot serve.
+
+## The cpu check measures load, not ticks (0.0.17)
+
+drongar paged 24 cpu warnings in a day, one of them cleared a second
+after it fired, while the box sat at load 0.6 on 4 cores, 55 days up.
+The old probe compared two-second /proc/stat deltas against the
+threshold, so any cron burst that pinned the cores for one sampling
+window read as an emergency. The check now reports the one minute load
+average spread over the cores on every platform, which macOS already
+did: the kernel's own damped mean, free to a tool that stores no
+history, measuring queued demand rather than momentary use. Linux load
+counts uninterruptible disk wait too, which is kept on purpose, an
+IO-starved box deserves the warning, and the detail sentence says load
+so the words stay honest. Uncapped: load past the core count is the
+signal.

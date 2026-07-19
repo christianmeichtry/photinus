@@ -25,7 +25,10 @@ while ss -lnt 2>/dev/null | grep -q ':7946 '; do
   if [ $i -gt 120 ]; then echo "port 7946 never freed, aborting"; exit 1; fi
   sleep 0.5
 done
-export PHOTINUS_KEY='flash twice, wait once'
+# The key never lives in this script or the repo again: each box keeps
+# it in a mode-600 file the operator owns.
+PHOTINUS_KEY=$(cat "$HOME/.photinus.key")
+export PHOTINUS_KEY
 nohup sh -c "$CMD" >> /tmp/photinus.log 2>&1 &
 sleep 3
 NEW=$(ss -lntp 2>/dev/null | sed -n 's/.*:7946 .*pid=\([0-9]*\).*/\1/p' | head -1)

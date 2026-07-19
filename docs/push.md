@@ -6,6 +6,23 @@ guide points that command at your phone using [ntfy](https://ntfy.sh), a
 small self-hostable pub-sub notifier. It stays on-brand: one Go binary, no
 account, runs on a box you already own.
 
+## The short way: no script at all
+
+The pager script below is no longer needed. photinus posts to ntfy (or any
+webhook that reads a body and headers) built-in:
+
+```sh
+photinus run ... -notify-url https://ntfy.example.com/photinus-a1b2c3 \
+  -notify-url-token tk_xxxxxxxx
+```
+
+The token can also come from `$PHOTINUS_NOTIFY_TOKEN`. Priorities and tags
+map the same way the script did: down arrives urgent, flapping high,
+recoveries and clears quietly. `-notify` and `-notify-url` combine, so an
+exec script can run alongside the built-in post. Set up the ntfy server
+(section 1) and your phone (section 3) as before; the script docs below
+stay for exec users who want their own transport.
+
 ## 1. Run ntfy on one lantern's host
 
 Any box works; drongar is a fine choice since it already runs Caddy. On

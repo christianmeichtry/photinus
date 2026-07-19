@@ -536,3 +536,18 @@ executions without a crash. A five-lantern soak at 200ms flashes under
 random pauses and kills ended five lit, no stale subjects, and one
 correct DOWN: the soak's own pulse, whose pinger had exited with the
 churn. Push/pull sync measured at 118 KiB for 600 observations.
+## The config file (config-file branch)
+
+The deployment story lands: one YAML file per box, at the per-OS default
+path or wherever -config points, covering everything the flags do.
+Precedence from strongest: a flag given on the command line, then the
+file, then a flag's environment default. Lists (seeds, expect, watch)
+replace rather than merge, so what runs is always readable from one
+place. Parsing is strict, an unknown key is an error: a config file that
+silently ignores a typo monitors less than the operator believes, and
+that is the worst failure mode a monitoring tool has. yaml.v3 is the one
+new dependency; YAML is the format this project committed to in its
+brief, and hand-rolling a YAML parser is how projects die. The research
+behind doing this now: config-as-code is the loudest theme in what
+self-hosters ask of monitoring tools, it is most of why Gatus is loved
+and one of the top requests Uptime Kuma cannot serve.

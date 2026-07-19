@@ -49,6 +49,12 @@ watch:
 # changed; gets kind, check, target, and a sentence as arguments.
 notify: /usr/local/bin/pager
 
+# Or page over HTTP with no script at all: the elected lantern POSTs the
+# alert with ntfy conventions (title, priority, tags) to this url. Both
+# channels may be set; the tracker fans out to each.
+notify_url: https://ntfy.sh/your-random-topic
+# notify_url_token: a-bearer-token-for-self-hosted-servers
+
 # Bearer token guarding status data. When set, the gossip port also
 # answers the panel and /status.json, so the app and a browser reach the
 # swarm through the one open port.

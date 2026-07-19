@@ -27,20 +27,22 @@ import (
 // flag entirely when the flag is absent; they never merge, so what runs is
 // always readable from one place.
 type fileConfig struct {
-	ID         string   `yaml:"id"`
-	Bind       string   `yaml:"bind"`
-	Advertise  string   `yaml:"advertise"`
-	Key        string   `yaml:"key"`
-	Interval   duration `yaml:"interval"`
-	SkewMax    duration `yaml:"skew_max"`
-	Notify     string   `yaml:"notify"`
-	Socket     string   `yaml:"socket"`
-	Panel      string   `yaml:"panel"`
-	PanelToken string   `yaml:"panel_token"`
-	Defaults   *bool    `yaml:"defaults"`
-	Seeds      []string `yaml:"seeds"`
-	Expect     []string `yaml:"expect"`
-	Watch      []string `yaml:"watch"`
+	ID             string   `yaml:"id"`
+	Bind           string   `yaml:"bind"`
+	Advertise      string   `yaml:"advertise"`
+	Key            string   `yaml:"key"`
+	Interval       duration `yaml:"interval"`
+	SkewMax        duration `yaml:"skew_max"`
+	Notify         string   `yaml:"notify"`
+	NotifyURL      string   `yaml:"notify_url"`
+	NotifyURLToken string   `yaml:"notify_url_token"`
+	Socket         string   `yaml:"socket"`
+	Panel          string   `yaml:"panel"`
+	PanelToken     string   `yaml:"panel_token"`
+	Defaults       *bool    `yaml:"defaults"`
+	Seeds          []string `yaml:"seeds"`
+	Expect         []string `yaml:"expect"`
+	Watch          []string `yaml:"watch"`
 }
 
 // duration lets YAML carry Go duration strings like "2s" or "25h".
@@ -100,7 +102,7 @@ func loadConfig(path string) (*fileConfig, error) {
 // operator did not set on the command line (per the set map from
 // fs.Visit) takes the file's word when the file says anything.
 func mergeConfig(fc *fileConfig, set map[string]bool,
-	id, bind, advertise, key, notifyCmd, socket, panel, panelToken *string,
+	id, bind, advertise, key, notifyCmd, notifyURL, notifyURLToken, socket, panel, panelToken *string,
 	interval, skewMax *time.Duration, defaults *bool,
 	seeds, watches, expect *stringList) {
 
@@ -114,6 +116,8 @@ func mergeConfig(fc *fileConfig, set map[string]bool,
 	str("advertise", advertise, fc.Advertise)
 	str("key", key, fc.Key)
 	str("notify", notifyCmd, fc.Notify)
+	str("notify-url", notifyURL, fc.NotifyURL)
+	str("notify-url-token", notifyURLToken, fc.NotifyURLToken)
 	str("socket", socket, fc.Socket)
 	str("panel", panel, fc.Panel)
 	str("panel-token", panelToken, fc.PanelToken)

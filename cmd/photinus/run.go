@@ -81,7 +81,7 @@ func runCmd(args []string) error {
 		}
 		set := make(map[string]bool)
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
-		mergeConfig(fc, set, id, bind, advertise, key, notifyCmd, socket, panel, panelToken,
+		mergeConfig(fc, set, id, bind, advertise, key, notifyCmd, notifyURL, notifyURLToken, socket, panel, panelToken,
 			interval, skewMax, defaults, &seeds, &watches, &expect)
 	}
 

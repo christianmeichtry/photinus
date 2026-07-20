@@ -338,3 +338,42 @@ func TestTrackerForgetsVanishedSubjects(t *testing.T) {
 		t.Error("a subject unmentioned for three days is still tracked")
 	}
 }
+
+func TestDownHoldDown(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	down := quorum.Decision{Target: "bespin", Check: "lantern", State: quorum.StateDown, Votes: 3, Voters: 4, Needed: 3}
+	up := quorum.Decision{Target: "bespin", Check: "lantern", State: quorum.StateUp, Votes: 0, Voters: 4, Needed: 3}
+
+	t.Run("a blip shorter than the hold never pages", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, func(e Event) { sent = append(sent, e) }, nil)
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now)                     // t=0, held
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now.Add(10*time.Second)) // still held
+		tr.Observe([]quorum.Decision{up}, []string{"l1"}, now.Add(12*time.Second))   // recovered
+		if len(sent) != 0 {
+			t.Fatalf("a 12s outage paged: %+v", sent)
+		}
+	})
+
+	t.Run("an outage past the hold pages once, then recovers", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, func(e Event) { sent = append(sent, e) }, nil)
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now)                     // held
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now.Add(20*time.Second)) // still held
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now.Add(35*time.Second)) // past hold: page
+		tr.Observe([]quorum.Decision{up}, []string{"l1"}, now.Add(50*time.Second))   // recovered: page
+		if len(sent) != 2 || sent[0].Kind != "down" || sent[1].Kind != "recovered" {
+			t.Fatalf("want down then recovered, got %+v", sent)
+		}
+	})
+
+	t.Run("a warning is not held", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, func(e Event) { sent = append(sent, e) }, nil)
+		warn := quorum.Decision{Target: "jawa", Check: "swap", State: quorum.StateWarn, Votes: 1, Voters: 1, Needed: 1, Authority: true}
+		tr.Observe([]quorum.Decision{warn}, []string{"l1"}, now)
+		if len(sent) != 1 || sent[0].Kind != "warning" {
+			t.Fatalf("warning should page immediately, got %+v", sent)
+		}
+	})
+}

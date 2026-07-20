@@ -74,7 +74,14 @@ type Tracker struct {
 	transitions map[string][]time.Time // subject -> recent state changes
 	flapping    map[string]bool        // subject -> currently damped
 	lastSeen    map[string]time.Time   // subject -> last time a decision mentioned it
+	downSince   map[string]time.Time   // subject -> when an unconfirmed down began
 }
+
+// holdDown is how long a subject must stay down before its first page goes
+// out, applied to the lantern liveness check where transient gossip and
+// network blips live. A box back within this window never wakes anyone;
+// one that stays dark pages after it.
+const holdDown = 30 * time.Second
 
 // New builds a tracker. The warmup is how long after the first observation
 // the tracker stays quiet: a lantern that just started is alone in a swarm
@@ -89,6 +96,7 @@ func New(self string, warmup time.Duration, send Sender, logger *log.Logger) *Tr
 		send:        send,
 		log:         logger,
 		state:       make(map[string]string),
+		downSince:   make(map[string]time.Time),
 		lastSeen:    make(map[string]time.Time),
 		elected:     make(map[string]string),
 		transitions: make(map[string][]time.Time),
@@ -130,6 +138,7 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 			delete(t.transitions, subject)
 			delete(t.flapping, subject)
 			delete(t.lastSeen, subject)
+			delete(t.downSince, subject)
 		}
 	}
 
@@ -145,6 +154,29 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 			prev = quorum.StateUp
 		}
 		cur := d.State
+
+		// A lantern going down for a few seconds is a gossip blip, a home
+		// NAT hiccup, a brief pause, not an outage: the membership layer is
+		// the twitchiest signal there is. Hold its first down page until the
+		// box has been dark for holdDown. The stop-answering is still logged
+		// and the panel still shows it live, so the blip is recorded, just
+		// not pushed; a box back before the hold elapses never pages. Real
+		// probe checks (tcp, http, cert) fail through their own timeouts and
+		// quorum and are not held: when they go down it is usually real.
+		if d.Check == "lantern" {
+			if cur != quorum.StateDown {
+				delete(t.downSince, subject)
+			} else if prev != quorum.StateDown {
+				if t.downSince[subject].IsZero() {
+					t.downSince[subject] = now
+					t.log.Printf("%s went down, holding the page until it lasts %s", subject, holdDown)
+				}
+				if now.Sub(t.downSince[subject]) < holdDown {
+					continue
+				}
+				delete(t.downSince, subject)
+			}
+		}
 
 		if cur == prev {
 			// Unchanged. A flapping subject that has now held one state

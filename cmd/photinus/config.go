@@ -33,6 +33,7 @@ type fileConfig struct {
 	Key            string   `yaml:"key"`
 	Interval       duration `yaml:"interval"`
 	SkewMax        duration `yaml:"skew_max"`
+	AlertDelay     duration `yaml:"alert_delay"`
 	Notify         string   `yaml:"notify"`
 	NotifyURL      string   `yaml:"notify_url"`
 	NotifyURLToken string   `yaml:"notify_url_token"`
@@ -103,7 +104,7 @@ func loadConfig(path string) (*fileConfig, error) {
 // fs.Visit) takes the file's word when the file says anything.
 func mergeConfig(fc *fileConfig, set map[string]bool,
 	id, bind, advertise, key, notifyCmd, notifyURL, notifyURLToken, socket, panel, panelToken *string,
-	interval, skewMax *time.Duration, defaults *bool,
+	interval, skewMax, alertDelay *time.Duration, defaults *bool,
 	seeds, watches, expect *stringList) {
 
 	str := func(flagName string, dst *string, v string) {
@@ -126,6 +127,9 @@ func mergeConfig(fc *fileConfig, set map[string]bool,
 	}
 	if !set["skew-max"] && fc.SkewMax != 0 {
 		*skewMax = time.Duration(fc.SkewMax)
+	}
+	if !set["alert-delay"] && fc.AlertDelay != 0 {
+		*alertDelay = time.Duration(fc.AlertDelay)
 	}
 	if !set["defaults"] && fc.Defaults != nil {
 		*defaults = *fc.Defaults

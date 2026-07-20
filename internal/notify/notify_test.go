@@ -74,7 +74,7 @@ func TestTracker(t *testing.T) {
 	// evaluation at t=0, so warmup ends at afterWarmup.
 	newTracker := func(self string) (*Tracker, *[]Event) {
 		var delivered []Event
-		tr := New(self, warmup, func(e Event) { delivered = append(delivered, e) }, nil)
+		tr := New(self, warmup, 0, func(e Event) { delivered = append(delivered, e) }, nil)
 		tr.Observe(nil, nil, now)
 		return tr, &delivered
 	}
@@ -246,7 +246,7 @@ func TestFlapDamping(t *testing.T) {
 	}
 	newTracker := func() (*Tracker, *[]Event) {
 		var delivered []Event
-		tr := New(winner, 0, func(e Event) { delivered = append(delivered, e) }, nil)
+		tr := New(winner, 0, 0, func(e Event) { delivered = append(delivered, e) }, nil)
 		tr.Observe(nil, nil, base.Add(-time.Hour))
 		return tr, &delivered
 	}
@@ -322,7 +322,7 @@ func TestFlapDamping(t *testing.T) {
 }
 
 func TestTrackerForgetsVanishedSubjects(t *testing.T) {
-	tr := New("l1", 0, func(Event) {}, nil)
+	tr := New("l1", 0, 0, func(Event) {}, nil)
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
 	d := quorum.Decision{Target: "db:5432", Check: "tcp", State: quorum.StateDown,
 		Votes: 2, Voters: 2, Needed: 2}
@@ -337,4 +337,65 @@ func TestTrackerForgetsVanishedSubjects(t *testing.T) {
 	if _, ok := tr.state["tcp db:5432"]; ok {
 		t.Error("a subject unmentioned for three days is still tracked")
 	}
+}
+
+func TestDownHoldDown(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	const hold = 30 * time.Second
+	down := quorum.Decision{Target: "bespin", Check: "lantern", State: quorum.StateDown, Votes: 3, Voters: 4, Needed: 3}
+	up := quorum.Decision{Target: "bespin", Check: "lantern", State: quorum.StateUp, Votes: 0, Voters: 4, Needed: 3}
+
+	t.Run("a blip shorter than the delay never pages", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, hold, func(e Event) { sent = append(sent, e) }, nil)
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now)                     // t=0, held
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now.Add(10*time.Second)) // still held
+		tr.Observe([]quorum.Decision{up}, []string{"l1"}, now.Add(12*time.Second))   // recovered
+		if len(sent) != 0 {
+			t.Fatalf("a 12s outage paged: %+v", sent)
+		}
+	})
+
+	t.Run("an outage past the delay pages once, then recovers", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, hold, func(e Event) { sent = append(sent, e) }, nil)
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now)                     // held
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now.Add(20*time.Second)) // still held
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now.Add(35*time.Second)) // past delay: page
+		tr.Observe([]quorum.Decision{up}, []string{"l1"}, now.Add(50*time.Second))   // recovered: page
+		if len(sent) != 2 || sent[0].Kind != "down" || sent[1].Kind != "recovered" {
+			t.Fatalf("want down then recovered, got %+v", sent)
+		}
+	})
+
+	t.Run("the delay guards every check, not just the lantern", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, hold, func(e Event) { sent = append(sent, e) }, nil)
+		tcp := quorum.Decision{Target: "db:5432", Check: "tcp", State: quorum.StateDown, Votes: 3, Voters: 3, Needed: 2}
+		tcpUp := quorum.Decision{Target: "db:5432", Check: "tcp", State: quorum.StateUp, Votes: 0, Voters: 3, Needed: 2}
+		tr.Observe([]quorum.Decision{tcp}, []string{"l1"}, now)
+		tr.Observe([]quorum.Decision{tcpUp}, []string{"l1"}, now.Add(15*time.Second))
+		if len(sent) != 0 {
+			t.Fatalf("a 15s tcp blip paged under the delay: %+v", sent)
+		}
+	})
+
+	t.Run("a delay of zero pages immediately", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, 0, func(e Event) { sent = append(sent, e) }, nil)
+		tr.Observe([]quorum.Decision{down}, []string{"l1"}, now)
+		if len(sent) != 1 || sent[0].Kind != "down" {
+			t.Fatalf("zero delay should page at once, got %+v", sent)
+		}
+	})
+
+	t.Run("a warning is not held", func(t *testing.T) {
+		var sent []Event
+		tr := New("l1", 0, hold, func(e Event) { sent = append(sent, e) }, nil)
+		warn := quorum.Decision{Target: "jawa", Check: "swap", State: quorum.StateWarn, Votes: 1, Voters: 1, Needed: 1, Authority: true}
+		tr.Observe([]quorum.Decision{warn}, []string{"l1"}, now)
+		if len(sent) != 1 || sent[0].Kind != "warning" {
+			t.Fatalf("warning should page immediately, got %+v", sent)
+		}
+	})
 }

@@ -69,26 +69,32 @@ type Tracker struct {
 	log    *log.Logger
 
 	start       time.Time
+	holdDown    time.Duration          // how long a down must last before it pages
 	state       map[string]string      // subject -> last known state
 	elected     map[string]string      // subject -> lantern elected to notify while not up
 	transitions map[string][]time.Time // subject -> recent state changes
 	flapping    map[string]bool        // subject -> currently damped
 	lastSeen    map[string]time.Time   // subject -> last time a decision mentioned it
+	downSince   map[string]time.Time   // subject -> when an unconfirmed down began
 }
 
 // New builds a tracker. The warmup is how long after the first observation
 // the tracker stays quiet: a lantern that just started is alone in a swarm
-// of one and would otherwise reach quorum with only its own vote.
-func New(self string, warmup time.Duration, send Sender, logger *log.Logger) *Tracker {
+// of one and would otherwise reach quorum with only its own vote. holdDown
+// is how long a subject must stay down before its first page fires; zero
+// pages the instant quorum agrees.
+func New(self string, warmup, holdDown time.Duration, send Sender, logger *log.Logger) *Tracker {
 	if logger == nil {
 		logger = log.New(io.Discard, "", 0)
 	}
 	return &Tracker{
 		self:        self,
 		warmup:      warmup,
+		holdDown:    holdDown,
 		send:        send,
 		log:         logger,
 		state:       make(map[string]string),
+		downSince:   make(map[string]time.Time),
 		lastSeen:    make(map[string]time.Time),
 		elected:     make(map[string]string),
 		transitions: make(map[string][]time.Time),
@@ -130,6 +136,7 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 			delete(t.transitions, subject)
 			delete(t.flapping, subject)
 			delete(t.lastSeen, subject)
+			delete(t.downSince, subject)
 		}
 	}
 
@@ -145,6 +152,28 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 			prev = quorum.StateUp
 		}
 		cur := d.State
+
+		// A down that has not lasted the alert delay is not yet an alarm. A
+		// brief unreachability, a home NAT blip, a scheduler pause, resolves
+		// on its own, and the operator set this delay because that is not
+		// worth a page. The stop-answering is still logged here and the
+		// panel still shows the state live, so a brief outage is recorded,
+		// just not pushed; a subject back before the delay never pages. A
+		// delay of zero pages the instant quorum agrees.
+		if t.holdDown > 0 {
+			if cur != quorum.StateDown {
+				delete(t.downSince, subject)
+			} else if prev != quorum.StateDown {
+				if t.downSince[subject].IsZero() {
+					t.downSince[subject] = now
+					t.log.Printf("%s went down, holding the alarm until it lasts %s", subject, t.holdDown)
+				}
+				if now.Sub(t.downSince[subject]) < t.holdDown {
+					continue
+				}
+				delete(t.downSince, subject)
+			}
+		}
 
 		if cur == prev {
 			// Unchanged. A flapping subject that has now held one state

@@ -41,6 +41,7 @@ func runCmd(args []string) error {
 	key := fs.String("key", os.Getenv("PHOTINUS_KEY"), "shared swarm secret: encrypts gossip so only lanterns with the same key can join (defaults to $PHOTINUS_KEY, empty runs open)")
 	interval := fs.Duration("interval", 2*time.Second, "time between flashes")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
+	alertDelay := fs.Duration("alert-delay", 2*time.Minute, "how long a subject must stay down before the first page; brief blips under this are logged but never paged, 0 pages the instant quorum agrees")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments (combines with -notify-url)")
 	notifyURL := fs.String("notify-url", "", "url the elected lantern POSTs to when the swarm agrees something changed; the body is a sentence, ntfy-style headers carry title, priority, and tags, so for ntfy pass the topic url like https://ntfy.example.com/photinus (combines with -notify)")
 	notifyURLToken := fs.String("notify-url-token", os.Getenv("PHOTINUS_NOTIFY_TOKEN"), "bearer token sent with every -notify-url post (defaults to $PHOTINUS_NOTIFY_TOKEN, empty sends none)")
@@ -82,7 +83,7 @@ func runCmd(args []string) error {
 		set := make(map[string]bool)
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 		mergeConfig(fc, set, id, bind, advertise, key, notifyCmd, notifyURL, notifyURLToken, socket, panel, panelToken,
-			interval, skewMax, defaults, &seeds, &watches, &expect)
+			interval, skewMax, alertDelay, defaults, &seeds, &watches, &expect)
 	}
 
 	if *id == "" {
@@ -133,7 +134,7 @@ func runCmd(args []string) error {
 	if len(senders) > 0 {
 		// The warmup matches the observation aging window: by then the
 		// swarm has formed and a lantern is no longer a quorum of one.
-		tracker = notify.New(*id, 5*(*interval), fanOut(senders), logger)
+		tracker = notify.New(*id, 5*(*interval), *alertDelay, fanOut(senders), logger)
 	}
 
 	lan := lantern.New(lantern.Config{

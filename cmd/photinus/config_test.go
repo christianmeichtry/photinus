@@ -95,11 +95,11 @@ func TestMergeConfig(t *testing.T) {
 	t.Run("the file fills what flags left unset", func(t *testing.T) {
 		id, bind, advertise, key, notifyCmd, socket, panel, panelToken := "hosty", "", "", "", "", "", "", ""
 		notifyURL, notifyURLToken := "", ""
-		interval, skewMax := 2*time.Second, 5*time.Second
+		interval, skewMax, alertDelay := 2*time.Second, 5*time.Second, 2*time.Minute
 		defaults := true
 		var seeds, watches, expect stringList
 		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &key, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &panelToken,
-			&interval, &skewMax, &defaults, &seeds, &watches, &expect)
+			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
 		if id != "filebox" || key != "file key" || interval != 9*time.Second || defaults || len(seeds) != 1 {
 			t.Errorf("file values not applied: id=%q key=%q interval=%v defaults=%v seeds=%v",
 				id, key, interval, defaults, seeds)
@@ -113,13 +113,13 @@ func TestMergeConfig(t *testing.T) {
 		id, key := "flagbox", "flag key"
 		bind, advertise, notifyCmd, socket, panel, panelToken := "", "", "", "", "", ""
 		notifyURL, notifyURLToken := "", ""
-		interval, skewMax := 4*time.Second, 5*time.Second
+		interval, skewMax, alertDelay := 4*time.Second, 5*time.Second, 2*time.Minute
 		defaults := true
 		seeds := stringList{"flag:7946"}
 		var watches, expect stringList
 		set := map[string]bool{"id": true, "key": true, "interval": true, "defaults": true, "seed": true}
 		mergeConfig(fc, set, &id, &bind, &advertise, &key, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &panelToken,
-			&interval, &skewMax, &defaults, &seeds, &watches, &expect)
+			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
 		if id != "flagbox" || key != "flag key" || interval != 4*time.Second || !defaults || seeds[0] != "flag:7946" {
 			t.Errorf("flag values overridden by the file: id=%q key=%q interval=%v defaults=%v seeds=%v",
 				id, key, interval, defaults, seeds)
@@ -132,11 +132,11 @@ func TestMergeConfig(t *testing.T) {
 		key := "env key"
 		id, bind, advertise, notifyCmd, socket, panel, panelToken := "", "", "", "", "", "", ""
 		notifyURL, notifyURLToken := "", ""
-		interval, skewMax := 2*time.Second, 5*time.Second
+		interval, skewMax, alertDelay := 2*time.Second, 5*time.Second, 2*time.Minute
 		defaults := true
 		var seeds, watches, expect stringList
 		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &key, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &panelToken,
-			&interval, &skewMax, &defaults, &seeds, &watches, &expect)
+			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
 		if key != "file key" {
 			t.Errorf("key = %q, want the file's word over the environment's", key)
 		}

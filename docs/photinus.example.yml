@@ -35,6 +35,11 @@ expect:
 interval: 2s
 skew_max: 5s
 
+# How long a subject must stay down before the first page. A brief blip
+# under this is logged but never paged; set 0 to page the instant quorum
+# agrees.
+alert_delay: 2m
+
 # The standard local checks (disk:/, cpu, memory, swap, uptime, net) run
 # unless this says false. watch adds more, or overrides a default's
 # threshold by naming it. Same syntax as the -watch flag.

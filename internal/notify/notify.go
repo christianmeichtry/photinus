@@ -69,6 +69,7 @@ type Tracker struct {
 	log    *log.Logger
 
 	start       time.Time
+	holdDown    time.Duration          // how long a down must last before it pages
 	state       map[string]string      // subject -> last known state
 	elected     map[string]string      // subject -> lantern elected to notify while not up
 	transitions map[string][]time.Time // subject -> recent state changes
@@ -77,22 +78,19 @@ type Tracker struct {
 	downSince   map[string]time.Time   // subject -> when an unconfirmed down began
 }
 
-// holdDown is how long a subject must stay down before its first page goes
-// out, applied to the lantern liveness check where transient gossip and
-// network blips live. A box back within this window never wakes anyone;
-// one that stays dark pages after it.
-const holdDown = 30 * time.Second
-
 // New builds a tracker. The warmup is how long after the first observation
 // the tracker stays quiet: a lantern that just started is alone in a swarm
-// of one and would otherwise reach quorum with only its own vote.
-func New(self string, warmup time.Duration, send Sender, logger *log.Logger) *Tracker {
+// of one and would otherwise reach quorum with only its own vote. holdDown
+// is how long a subject must stay down before its first page fires; zero
+// pages the instant quorum agrees.
+func New(self string, warmup, holdDown time.Duration, send Sender, logger *log.Logger) *Tracker {
 	if logger == nil {
 		logger = log.New(io.Discard, "", 0)
 	}
 	return &Tracker{
 		self:        self,
 		warmup:      warmup,
+		holdDown:    holdDown,
 		send:        send,
 		log:         logger,
 		state:       make(map[string]string),
@@ -155,23 +153,22 @@ func (t *Tracker) Observe(decisions []quorum.Decision, alive []string, now time.
 		}
 		cur := d.State
 
-		// A lantern going down for a few seconds is a gossip blip, a home
-		// NAT hiccup, a brief pause, not an outage: the membership layer is
-		// the twitchiest signal there is. Hold its first down page until the
-		// box has been dark for holdDown. The stop-answering is still logged
-		// and the panel still shows it live, so the blip is recorded, just
-		// not pushed; a box back before the hold elapses never pages. Real
-		// probe checks (tcp, http, cert) fail through their own timeouts and
-		// quorum and are not held: when they go down it is usually real.
-		if d.Check == "lantern" {
+		// A down that has not lasted the alert delay is not yet an alarm. A
+		// brief unreachability, a home NAT blip, a scheduler pause, resolves
+		// on its own, and the operator set this delay because that is not
+		// worth a page. The stop-answering is still logged here and the
+		// panel still shows the state live, so a brief outage is recorded,
+		// just not pushed; a subject back before the delay never pages. A
+		// delay of zero pages the instant quorum agrees.
+		if t.holdDown > 0 {
 			if cur != quorum.StateDown {
 				delete(t.downSince, subject)
 			} else if prev != quorum.StateDown {
 				if t.downSince[subject].IsZero() {
 					t.downSince[subject] = now
-					t.log.Printf("%s went down, holding the page until it lasts %s", subject, holdDown)
+					t.log.Printf("%s went down, holding the alarm until it lasts %s", subject, t.holdDown)
 				}
-				if now.Sub(t.downSince[subject]) < holdDown {
+				if now.Sub(t.downSince[subject]) < t.holdDown {
 					continue
 				}
 				delete(t.downSince, subject)

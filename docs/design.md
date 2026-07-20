@@ -578,3 +578,20 @@ counts uninterruptible disk wait too, which is kept on purpose, an
 IO-starved box deserves the warning, and the detail sentence says load
 so the words stay honest. Uncapped: load past the core count is the
 signal.
+
+
+## The alert delay (PR: down hold-down)
+
+A ten second gossip blip on a home NAT paged a box down and recovered
+ten seconds later, for nothing anyone could act on. A page must warn of
+what happened or is coming, not what might maybe eventually be a problem.
+So a down now waits out an alert-delay before its first page: brief
+outages under it are still logged by the tracker and shown live on the
+panel, but never pushed, and a subject back before the delay elapses
+pages nobody. It guards every check, not just the twitchy lantern
+liveness one, because the operator who sets a delay means it for alarms
+in general. The default is two minutes; -alert-delay 0 restores instant
+paging for anyone who wants it. Recovery and warnings are never delayed,
+and a subject that flaps faster than the delay never commits a down, so
+chronic sub-delay bouncing is logged but not paged, which is the same
+trade the delay makes on purpose.

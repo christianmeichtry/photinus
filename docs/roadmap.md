@@ -21,6 +21,7 @@ Post-freeze, rough priority. The freeze holds until these are deliberately picke
 
 ## Product
 - **iOS app phase 2** — in-app ntfy push subscription, StoreKit "Pro" tier; then self-signed TLS on the mux with cert pinning in the app.
+- **Apple TV wall panel (tvOS).** A read-only, always-on swarm display for an office or home wall, a new target in the photinus-app repo reusing the iOS client (SwarmClient, models, door failover, palette); only the 10-foot views are new. The firefly constellation is the hero, big state pills, red wash on a real DOWN, no notifications (a TV is not a pager). The one hard part is door and token entry without a keyboard: pair via the shared iCloud keychain from the signed-in phone, no typing. A constellation screensaver is a bonus. Operator has several Apple TVs on hand, so this is a wanted personal display, not hypothetical.
 - **Public release** — undraft the binaries, restore `install.sh` on the docroot, announce.
 
 ## Done (recent, for context)

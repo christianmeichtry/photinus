@@ -4,4 +4,4 @@
 package version
 
 // Release is the photinus release. Bump on every published build.
-const Release = "0.0.21"
+const Release = "0.0.22"

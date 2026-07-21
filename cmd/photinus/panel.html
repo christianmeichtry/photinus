@@ -133,9 +133,9 @@
   </footer>
 </div>
 
-<dialog id="settings">
+<dialog id="settings" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSettings();}">
   <h2>doors</h2>
-  <p class="dlghint">The app reaches the swarm through any lantern. Add each door's address and its bearer token; if one goes dark the panel tries the next.</p>
+  <p class="dlghint">The app reaches the swarm through any lantern. Add each door's address and its swarm token; if one goes dark the panel tries the next.</p>
   <div id="doorrows"></div>
   <div class="dlgbtns">
     <button type="button" onclick="document.getElementById('settings').close()">cancel</button>
@@ -455,7 +455,7 @@ function openSettings(focusOrigin){
   const doors = usableDoors();
   $("doorrows").innerHTML = doors.map(o => `
     <label class="doorrow"><span>${o===ownOrigin?"this lantern":o.replace(/^https?:\/\//,"")}</span>
-    <input data-origin="${o}" type="password" placeholder="bearer token" value="${tokens[o]||""}"></label>`).join("")
+    <input data-origin="${o}" type="password" placeholder="swarm token" value="${tokens[o]||""}"></label>`).join("")
     + `<label class="doorrow"><span>add door</span><input id="newdoor" type="url" placeholder="https://lantern:7946"></label>`;
   if (typeof dlg.showModal === "function" && !dlg.open) dlg.showModal();
   if (focusOrigin){ const f = $("doorrows").querySelector(`[data-origin="${focusOrigin}"]`); if (f) f.focus(); }

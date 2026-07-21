@@ -176,3 +176,38 @@ func TestNetRate(t *testing.T) {
 		t.Errorf("unsupported platform: verdict = %s, want %s", got.Verdict, NotApplicable)
 	}
 }
+
+func TestHysteresis(t *testing.T) {
+	// The band: trip above max, hold through the band, clear only below it.
+	steps := []struct {
+		pct  float64
+		want Verdict
+	}{
+		{90, OK},   // below everything
+		{96, Warn}, // crosses max 95
+		{91, Warn}, // in the band: still warned, no cleared page
+		{88, Warn}, // still in the band
+		{84, OK},   // below clear 85: genuinely receded
+		{91, OK},   // band entered from below: stays ok
+	}
+	c := &CPU{Host: "l1", Max: 95}
+	for i, st := range steps {
+		c.probe = func() (float64, bool, error) { return st.pct, true, nil }
+		if got := c.Run(context.Background()); got.Verdict != st.want {
+			t.Fatalf("step %d (pct %.0f): verdict = %s, want %s (%s)", i, st.pct, got.Verdict, st.want, got.Detail)
+		}
+	}
+
+	// Net uses a ratio band on its Mbit limit.
+	n := &Net{Host: "l1", Max: 100}
+	for i, st := range []struct {
+		mbps float64
+		want Verdict
+	}{{101, Warn}, {90, Warn}, {84, OK}} {
+		v := st.mbps * 1e6 / 8 / 2
+		n.probe = func() (float64, float64, string, bool, error) { return v, v, "eth0", true, nil }
+		if got := n.Run(context.Background()); got.Verdict != st.want {
+			t.Fatalf("net step %d: verdict = %s, want %s (%s)", i, got.Verdict, st.want, got.Detail)
+		}
+	}
+}

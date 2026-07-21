@@ -20,7 +20,8 @@ type CPU struct {
 	// Max is the busy percentage that trips the check. Zero means 95.
 	Max float64
 
-	probe func() (percent float64, ready bool, err error)
+	warned bool
+	probe  func() (percent float64, ready bool, err error)
 }
 
 func (c *CPU) Name() string   { return "cpu" }
@@ -45,8 +46,13 @@ func (c *CPU) Run(ctx context.Context) Result {
 		return Result{Verdict: OK, Detail: "cpu measurement warming up, first verdict next flash"}
 	}
 	cores := runtime.NumCPU()
-	if pct > max {
-		return Result{Verdict: Warn, Detail: fmt.Sprintf("cpu load is %.0f%% of %d cores, threshold is %.0f%%", pct, cores, max)}
+	clear := max - 10
+	if clear < 0 {
+		clear = 0
+	}
+	c.warned = hysteresis(c.warned, pct, max, clear)
+	if c.warned {
+		return Result{Verdict: Warn, Detail: fmt.Sprintf("cpu load is %.0f%% of %d cores, threshold is %.0f%%, clears below %.0f%%", pct, cores, max, clear)}
 	}
 	return Result{Verdict: OK, Detail: fmt.Sprintf("cpu load is %.0f%% of %d cores", pct, cores)}
 }

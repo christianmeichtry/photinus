@@ -20,7 +20,8 @@ type Net struct {
 	// until an operator names a limit.
 	Max float64
 
-	probe func() (rxBps, txBps float64, iface string, ready bool, err error)
+	warned bool
+	probe  func() (rxBps, txBps float64, iface string, ready bool, err error)
 }
 
 func (n *Net) Name() string   { return "net" }
@@ -41,8 +42,12 @@ func (n *Net) Run(ctx context.Context) Result {
 		return Result{Verdict: OK, Detail: "network measurement warming up, first rate next flash"}
 	}
 	detail := fmt.Sprintf("net is %s in, %s out on %s", humanRate(rx), humanRate(tx), iface)
-	if mbit := (rx + tx) * 8 / 1e6; n.Max > 0 && mbit > n.Max {
-		return Result{Verdict: Warn, Detail: fmt.Sprintf("%s, %.0f Mbit/s combined, threshold is %.0f", detail, mbit, n.Max)}
+	if n.Max > 0 {
+		mbit := (rx + tx) * 8 / 1e6
+		n.warned = hysteresis(n.warned, mbit, n.Max, 0.85*n.Max)
+		if n.warned {
+			return Result{Verdict: Warn, Detail: fmt.Sprintf("%s, %.0f Mbit/s combined, threshold is %.0f, clears below %.0f", detail, mbit, n.Max, 0.85*n.Max)}
+		}
 	}
 	return Result{Verdict: OK, Detail: detail}
 }

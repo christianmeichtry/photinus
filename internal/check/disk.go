@@ -21,7 +21,8 @@ type Disk struct {
 	// Max is the used percentage that trips the check. Zero means 90.
 	Max float64
 
-	probe func(path string) (diskUsage, error)
+	warned bool
+	probe  func(path string) (diskUsage, error)
 }
 
 func (d *Disk) Name() string   { return "disk:" + d.Path }
@@ -43,9 +44,14 @@ func (d *Disk) Run(ctx context.Context) Result {
 	if err != nil {
 		return Result{Verdict: NotApplicable, Detail: fmt.Sprintf("cannot read disk usage of %s: %v", d.Path, err)}
 	}
-	if u.usedPercent > max {
-		return Result{Verdict: Warn, Detail: fmt.Sprintf("disk %s is %.0f%% full, %s left, threshold is %.0f%%",
-			d.Path, u.usedPercent, humanBytes(u.freeBytes), max)}
+	clear := max - 10
+	if clear < 0 {
+		clear = 0
+	}
+	d.warned = hysteresis(d.warned, u.usedPercent, max, clear)
+	if d.warned {
+		return Result{Verdict: Warn, Detail: fmt.Sprintf("disk %s is %.0f%% full, %s left, threshold is %.0f%%, clears below %.0f%%",
+			d.Path, u.usedPercent, humanBytes(u.freeBytes), max, clear)}
 	}
 	return Result{Verdict: OK, Detail: fmt.Sprintf("disk %s is %.0f%% full, %s free",
 		d.Path, u.usedPercent, humanBytes(u.freeBytes))}

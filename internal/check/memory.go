@@ -26,7 +26,8 @@ type Memory struct {
 	// Max is the used percentage that trips the check. Zero means 95.
 	Max float64
 
-	probe func() (memUsage, error)
+	warned bool
+	probe  func() (memUsage, error)
 }
 
 func (m *Memory) Name() string   { return "memory" }
@@ -50,8 +51,13 @@ func (m *Memory) Run(ctx context.Context) Result {
 	}
 	pct := u.usedPercent()
 	detail := fmt.Sprintf("memory is %.0f%% used, %s of %s", pct, humanBytes(u.usedBytes), humanBytes(u.totalBytes))
-	if pct > max {
-		return Result{Verdict: Warn, Detail: detail + fmt.Sprintf(", threshold is %.0f%%", max)}
+	clear := max - 10
+	if clear < 0 {
+		clear = 0
+	}
+	m.warned = hysteresis(m.warned, pct, max, clear)
+	if m.warned {
+		return Result{Verdict: Warn, Detail: detail + fmt.Sprintf(", threshold is %.0f%%, clears below %.0f%%", max, clear)}
 	}
 	return Result{Verdict: OK, Detail: detail}
 }

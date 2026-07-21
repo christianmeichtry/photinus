@@ -20,7 +20,8 @@ type Swap struct {
 	// Max is the used percentage that trips the check. Zero means 80.
 	Max float64
 
-	probe func() (swapUsage, error)
+	warned bool
+	probe  func() (swapUsage, error)
 }
 
 func (s *Swap) Name() string   { return "swap" }
@@ -47,8 +48,13 @@ func (s *Swap) Run(ctx context.Context) Result {
 	}
 	pct := 100 * float64(u.usedBytes) / float64(u.totalBytes)
 	detail := fmt.Sprintf("swap is %.0f%% used, %s of %s", pct, humanBytes(u.usedBytes), humanBytes(u.totalBytes))
-	if pct > max {
-		return Result{Verdict: Warn, Detail: detail + fmt.Sprintf(", threshold is %.0f%%", max)}
+	clear := max - 10
+	if clear < 0 {
+		clear = 0
+	}
+	s.warned = hysteresis(s.warned, pct, max, clear)
+	if s.warned {
+		return Result{Verdict: Warn, Detail: detail + fmt.Sprintf(", threshold is %.0f%%, clears below %.0f%%", max, clear)}
 	}
 	return Result{Verdict: OK, Detail: detail}
 }

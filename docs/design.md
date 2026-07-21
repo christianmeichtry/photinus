@@ -595,3 +595,14 @@ paging for anyone who wants it. Recovery and warnings are never delayed,
 and a subject that flaps faster than the delay never commits a down, so
 chronic sub-delay bouncing is logged but not paged, which is the same
 trade the delay makes on purpose.
+
+
+## Hysteresis on resource thresholds (0.0.19)
+
+The N=40 experiment put drongar's load average exactly on its threshold
+and the check narrated every ripple: fifteen pushes about one unchanged
+fact. Resource checks now carry a hysteresis band: warn above the
+threshold, clear only ten points below it (net uses 85 percent of its
+Mbit limit). A box riding its line says so once and stays warned, which
+is the truth, and says cleared once, when it genuinely recedes. Uptime
+is exempt: it clears by time passing, not by a value receding.

@@ -85,3 +85,14 @@ type Check interface {
 	// Run performs the check once and reports what it saw.
 	Run(ctx context.Context) Result
 }
+
+// hysteresis keeps a threshold check from narrating every ripple when the
+// signal rides its line: tripped past max, it stays tripped until the
+// value recedes below the clear line. One warning when capacity is
+// reached, one cleared when it genuinely recedes.
+func hysteresis(warned bool, value, max, clear float64) bool {
+	if value > max {
+		return true
+	}
+	return warned && value > clear
+}

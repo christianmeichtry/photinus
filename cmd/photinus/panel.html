@@ -447,7 +447,11 @@ async function tick(){
 
 // Settings: doors and their tokens.
 function openSettings(focusOrigin){
-  const dlg = $("settings"), tokens = loadTokens();
+  const dlg = $("settings");
+  // A failing poll reopens this on every tick; rebuilding the rows would
+  // erase a token mid-type. Leave an open dialog untouched.
+  if (dlg.open) return;
+  const tokens = loadTokens();
   const doors = usableDoors();
   $("doorrows").innerHTML = doors.map(o => `
     <label class="doorrow"><span>${o===ownOrigin?"this lantern":o.replace(/^https?:\/\//,"")}</span>

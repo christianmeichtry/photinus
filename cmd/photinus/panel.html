@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>photinus</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='6' fill='%23FFC24B'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='%23FFC24B'/%3E%3C/svg%3E">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <meta name="theme-color" content="#0B1F24">
@@ -13,96 +13,178 @@
 <meta name="apple-mobile-web-app-title" content="photinus">
 <style>
   :root{
-    --dusk:#0B1F24; --card:#102830; --rule:rgba(232,226,210,.13);
-    --ink:#E8E2D2; --dim:#8FA5A3;
-    --up:#7FA893; --warn:#FFC24B; --down:#E06A50;
+    --dusk:#0B1F24; --panel:#0F262D; --rule:rgba(232,226,210,.10);
+    --ink:#E8E2D2; --dim:#8FA5A3; --faint:#5C7378;
+    --up:#54C489; --warn:#FFC24B; --down:#E85D42;
+    --mac:#C9A3E0; --arm:#7FB4D9; --win:#E0B4A3;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--dusk);color:var(--ink);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;padding:1.5rem}
-  .wrap{max-width:72rem;margin:0 auto}
+  body{background:var(--dusk);color:var(--ink);font-family:var(--sans);font-size:16.5px;line-height:1.5;
+    padding:1.6rem clamp(1.2rem,3.5vw,3rem);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:none;margin:0}
 
-  header{display:flex;flex-wrap:wrap;align-items:baseline;gap:.6rem 1.2rem;margin-bottom:1.4rem}
-  .brand{font-family:var(--mono);color:var(--warn);letter-spacing:.12em}
-  .brand::before{content:"● ";font-size:.65em;vertical-align:.2em}
-  .brand .pulse{display:inline-block;animation:none}
+  header{display:flex;align-items:center;gap:.9rem;margin-bottom:.2rem;flex-wrap:wrap}
+  .brand{font-family:var(--mono);color:var(--warn);letter-spacing:.14em;font-size:.95rem}
+  .brand::before{content:"●";font-size:.6em;vertical-align:.28em;margin-right:.5em}
   @media (prefers-reduced-motion: no-preference){
     .brand::before{animation:flash 2.4s ease-in-out infinite}
-    @keyframes flash{0%,100%{opacity:.35}50%{opacity:1}}
+    @keyframes flash{0%,100%{opacity:.4}50%{opacity:1}}
   }
-  h1{font-size:1.2rem;font-weight:600}
-  #field{display:block;width:100%;height:400px;margin:0 0 1rem;border-radius:8px;background:radial-gradient(120% 90% at 50% 10%, rgba(16,40,48,.55), transparent 70%)}
-  .summary{font-family:var(--mono);font-size:.88rem;color:var(--dim);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
-  .summary b{font-weight:600;color:var(--ink)}
-  .pill{display:inline-block;padding:.12rem .65rem;border-radius:99px;font-weight:700;font-size:.82rem}
-  .pill.quiet{background:rgba(127,168,147,.18);color:var(--up)}
-  .pill.down{background:var(--down);color:var(--dusk)}
-  .pill.warn{background:var(--warn);color:var(--dusk)}
-  .pill.ghost{background:transparent;border:1px solid var(--rule);color:var(--dim)}
-  .pill.name{background:rgba(232,226,210,.12);color:var(--ink);font-family:var(--mono);letter-spacing:.05em}
-  .liv{margin-left:auto}
+  .who{font-family:var(--mono);font-size:.86rem;color:var(--dim);display:flex;align-items:center;gap:.45rem}
+  .pill.name{font-family:var(--mono);letter-spacing:.05em;background:rgba(232,226,210,.12);color:var(--ink);
+    border-radius:99px;padding:.1rem .6rem;font-weight:700}
+  .search{margin-left:auto;font-family:var(--mono);font-size:.82rem;color:var(--ink);background:var(--panel);
+    border:1px solid var(--rule);border-radius:7px;padding:.42rem .7rem;width:min(15rem,40vw)}
+  .search::placeholder{color:var(--faint)}
+  .search:focus{outline:2px solid rgba(255,194,75,.5);outline-offset:0;border-color:transparent}
+  .clearbtn,.orderbtn{font-family:var(--mono);font-size:.74rem;color:var(--dim);background:rgba(232,226,210,.07);
+    border:0;border-radius:7px;padding:.4rem .7rem;cursor:pointer;white-space:nowrap}
+  .clearbtn:hover,.orderbtn:hover{background:rgba(232,226,210,.14);color:var(--ink)}
+  .clearbtn[hidden]{display:none}
+  .orderbtn{display:flex;align-items:center;gap:.4rem}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(21rem,1fr));gap:1rem;grid-auto-rows:1fr}
-  .card{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:.9rem 1rem 1.7rem;position:relative}
-  .card.trouble{border-color:var(--down)}
-  .card h2{font-size:1.1rem;font-weight:650;display:flex;flex-wrap:wrap;gap:.35rem .7rem;align-items:baseline}
-  .hn{font-weight:750;letter-spacing:.06em}
-  .hn.arch-arm{color:#7FB4D9}
-  .hn.arch-mac{color:#C9A3E0}
-  .hn.arch-win{color:#E0B4A3}
-  .card h2 .meta{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--dim)}
-  .card h2 .meta.bad{color:var(--down);font-weight:600}
-  .card h2 .meta.sus{color:var(--warn)}
+  .hero{display:flex;flex-wrap:wrap;align-items:center;gap:1rem 1.6rem;margin:1.6rem 0 1.7rem;
+    position:sticky;top:0;z-index:15;background:var(--dusk);
+    padding:.9rem 0 1rem;box-shadow:0 10px 20px -16px rgba(0,0,0,.8)}
+  .tip{position:fixed;z-index:60;display:none;pointer-events:none;transform:translate(-50%,-100%);
+    font-family:var(--mono);font-size:.74rem;font-weight:700;letter-spacing:.02em;color:var(--ink);
+    background:#08171b;border:1px solid var(--rule);border-radius:6px;padding:.28rem .5rem;
+    white-space:nowrap;box-shadow:0 6px 16px rgba(0,0,0,.5)}
+  .mrow.hit,.svcchip.hit,.svccard.hit{animation:hit 3s ease}
+  @keyframes hit{0%{box-shadow:none}6%,80%{box-shadow:0 0 0 2px var(--warn),0 0 20px rgba(255,194,75,.45)}100%{box-shadow:none}}
 
-  table{width:100%;border-collapse:collapse;margin-top:.6rem}
-  td{padding:.38rem .5rem .38rem 0;vertical-align:top;border-top:1px solid var(--rule);font-size:.95rem;overflow-wrap:anywhere}
-  tr:first-child td{border-top:0}
-  .st{white-space:nowrap;width:4.4rem}
-  .st span{display:inline-block;font-family:var(--mono);font-size:.76rem;font-weight:700;padding:.08rem 0;border-radius:99px;min-width:3.4rem;text-align:center}
-  .st.up span{background:rgba(127,168,147,.28);color:var(--up)}
-  .st.warn span{background:var(--warn);color:var(--dusk)}
-  .st.down span{background:var(--down);color:var(--dusk)}
-  .st.stale span{background:transparent;border:1px solid var(--rule);color:var(--dim)}
-  /* A pill glitches once the instant its state changes; a stale ? keeps a
-     faint idle flicker, since its signal is genuinely breaking up. */
-  @media (prefers-reduced-motion: no-preference){
-    .st.glitch span, .pill.glitch{animation:glitch .5s steps(2,end) 1}
-    .st.stale span{animation:glitch-idle 2.6s steps(1) infinite}
-  }
-  @keyframes glitch{
-    0%{transform:translate(0,0);opacity:1;text-shadow:none}
-    20%{transform:translate(-2px,1px);opacity:.6;text-shadow:2px 0 var(--down),-2px 0 var(--up)}
-    40%{transform:translate(2px,-1px);opacity:1;text-shadow:-2px 0 var(--warn),2px 0 var(--up)}
-    60%{transform:translate(-1px,0);opacity:.5;text-shadow:1px 0 var(--down)}
-    80%{transform:translate(1px,0);opacity:1;text-shadow:-1px 0 var(--up)}
-    100%{transform:translate(0,0);opacity:1;text-shadow:none}
-  }
-  @keyframes glitch-idle{
-    0%,100%{transform:translate(0,0);opacity:.7;text-shadow:none}
-    92%{transform:translate(0,0);opacity:.7}
-    94%{transform:translate(-1px,0);opacity:1;text-shadow:1px 0 var(--down),-1px 0 var(--up)}
-    97%{transform:translate(1px,0);opacity:.45;text-shadow:-1px 0 var(--warn)}
-  }
-  .chk{font-family:var(--mono);font-size:.88rem;width:7rem;color:var(--ink)}
-  .det{color:var(--dim)}
-  .det .agree{opacity:.65;font-family:var(--mono);font-size:.8rem}
+  .matrix{display:grid;grid-template-columns:repeat(auto-fill,1.5rem);gap:.32rem;align-content:start}
+  .matrix.mhosts{flex:1 1 22rem}
+  .matrix.msvc{flex:0 1 9rem}
+  .sq{position:relative;width:1.5rem;height:1.5rem;border-radius:5px;background:var(--up);cursor:pointer;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+  .sq:hover{transform:scale(1.18)}
+  .sq.warn{background:var(--warn)}
+  .sq.down{background:var(--down);animation:downpulse 1.6s ease-in-out infinite}
+  .sq.stale{background:transparent;box-shadow:inset 0 0 0 1.5px var(--faint)}
+  .sq.svc{border-radius:99px}
+  @keyframes downpulse{0%,100%{box-shadow:0 0 8px rgba(232,93,66,.5)}50%{box-shadow:0 0 18px rgba(232,93,66,.95)}}
+  /* colorblind insurance: state also has a SHAPE, not only a hue */
+  .sq.down::after,.sq.warn::after,.dot.down::after,.dot.warn::after{content:"";position:absolute;
+    left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(11,31,36,.85)}
+  .sq.down::after{width:.62rem;height:.14rem;border-radius:2px}
+  .sq.warn::after{width:.32rem;height:.32rem;border-radius:99px}
+  .dot.down::after{width:.42rem;height:.1rem;border-radius:2px}
+  .dot.warn::after{width:.2rem;height:.2rem;border-radius:99px}
+  .matsep{width:1px;align-self:stretch;background:var(--rule);margin:.1rem .5rem}
+  @media (prefers-reduced-motion:reduce){.sq.down{animation:none}.sq{transition:none}.mrow.hit,.svcchip.hit,.svccard.hit{animation:none}}
 
-  .card.warned{border-color:rgba(255,194,75,.55)}
-  .typ{display:inline-block;font-family:var(--mono);font-size:.72rem;font-weight:700;color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:0 .4rem;margin-right:.5rem;vertical-align:.08rem}
-  .vfoot{position:absolute;bottom:.45rem;right:.9rem;font-family:var(--mono);font-size:.72rem;color:var(--dim);opacity:.75}
-  .dlogo{position:absolute;right:.5rem;bottom:.3rem;width:33%;max-width:8.5rem;opacity:.07;pointer-events:none;color:var(--ink);z-index:0}
-  .dlogo.dtext{font-family:var(--mono);font-weight:800;font-size:2rem;letter-spacing:.05em;text-align:right;opacity:.06}
-  .card h2,.card table{position:relative;z-index:1}
-  .vfoot{z-index:1}
-  .services{margin-top:1rem}
-  .services .card{grid-column:1 / -1}
-  .services .chk{width:auto;white-space:normal}
-  .services .det{display:block;margin-top:.1rem}
-  footer{margin-top:1.6rem;font-family:var(--mono);font-size:.72rem;color:var(--dim);display:flex;gap:1.5rem;flex-wrap:wrap}
+  .hverdict{margin-left:auto;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:.3rem}
+  .verdict{font-family:var(--mono);font-size:1.65rem;font-weight:900;letter-spacing:-.01em;
+    display:flex;gap:.7rem;align-items:center}
+  .verdict .ok{color:var(--up)} .verdict .vd{color:var(--down)} .verdict .vw{color:var(--warn)}
+  .verdict .sep{color:var(--faint);font-weight:400}
+  .verdict .vd,.verdict .vw{cursor:pointer;text-underline-offset:3px}
+  .verdict .vd:hover,.verdict .vw:hover{text-decoration:underline}
+  .swarmhealth{font-family:var(--mono);font-size:.78rem;color:var(--dim);letter-spacing:.02em}
+  .swarmhealth .part{color:var(--warn);font-weight:700}
+  .swarmhealth .sk{color:var(--faint)}
+
+  .sections{display:flex;flex-direction:column}
+  .sections.swarm-first #sec-swarm{order:1}
+  .sections.swarm-first #sec-svc{order:2}
+  .vlabel{font-family:var(--mono);font-size:1.5rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);margin:2.1rem 0 1rem}
+  .empty{font-family:var(--mono);font-size:.86rem;color:var(--faint);padding:1rem .2rem}
+
+  .meters{display:grid;grid-template-columns:repeat(auto-fill,minmax(23rem,1fr));gap:.7rem}
+  .mrow{background:var(--panel);border:1px solid var(--rule);border-left:3px solid transparent;border-radius:10px;
+    padding:.75rem 1rem .85rem;display:flex;flex-direction:column;gap:.6rem}
+  .mrow.warn{border-left-color:var(--warn);background:rgba(255,194,75,.05);border-color:rgba(255,194,75,.22)}
+  .mrow.down{border-left-color:var(--down);background:rgba(232,93,66,.07);border-color:rgba(232,93,66,.32)}
+  .mhead{display:flex;align-items:baseline;gap:.55rem}
+  .dot{position:relative;width:.85rem;height:.85rem;border-radius:99px;background:var(--up);align-self:center}
+  .dot.warn{background:var(--warn)} .dot.down{background:var(--down);box-shadow:0 0 0 3px rgba(232,93,66,.22)}
+  .dot.stale{background:transparent;border:1px solid var(--faint)}
+  .mname{font-family:var(--mono);font-weight:750;font-size:1.15rem;color:var(--ink);letter-spacing:.05em}
+  .mplat{font-family:var(--mono);font-size:.78rem;color:var(--faint)}
+  .mplat.arch-mac{color:var(--mac)} .mplat.arch-arm{color:var(--arm)} .mplat.arch-win{color:var(--win)}
+  .mlive{margin-left:auto;font-family:var(--mono);font-size:.8rem;color:var(--faint);white-space:nowrap}
+  .mlive.dark{color:var(--down);font-weight:700}
+
+  .meterset{display:grid;grid-template-columns:3.4rem 1fr 3.4rem;gap:.34rem .7rem;align-items:center;
+    font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .mk{color:var(--faint);font-size:.76rem;text-transform:uppercase;letter-spacing:.05em}
+  .track{position:relative;height:.72rem;background:rgba(255,255,255,.055);border-radius:99px;overflow:visible}
+  .fill{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--up);min-width:.4rem;
+    transition:width .5s ease, background-color .5s ease}
+  .fill.warn{box-shadow:0 0 8px rgba(255,194,75,.5)}
+  .fill.down{background:var(--down);box-shadow:0 0 8px rgba(232,93,66,.6)}
+  .tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:rgba(232,226,210,.32);border-radius:2px}
+  .mv{text-align:right;color:var(--dim);font-size:.9rem}
+  .mv.warn{color:var(--warn);font-weight:700} .mv.down{color:var(--down);font-weight:700} .mv.stale{color:var(--faint)}
+
+  /* healthy hosts collapse to one full-width row: no reason a calm box is as tall as a broken one */
+  .mrow.compact{grid-column:1/-1;flex-direction:row;align-items:center;gap:1.3rem;padding:.5rem .95rem;background:var(--panel)}
+  .mrow.compact .chead{display:flex;align-items:center;gap:.55rem;min-width:15rem;flex:none}
+  .mrow.compact .mname{font-size:1rem}
+  .mrow.compact .cbars{display:flex;gap:1.4rem;flex:1;flex-wrap:wrap;align-items:center;
+    font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .mrow.compact .cb{display:flex;align-items:center;gap:.45rem}
+  .mrow.compact .cb .mk{font-size:.7rem}
+  .mrow.compact .track{position:relative;width:4.5rem;height:.55rem;background:rgba(255,255,255,.055);
+    border-radius:99px;overflow:visible}
+  .mrow.compact .mv{font-size:.82rem;min-width:2.7rem}
+  .mrow.compact .mlive{font-size:.76rem;color:var(--faint);flex:none}
+
+  .mfoot{display:flex;gap:1.3rem;font-family:var(--mono);font-size:.82rem;color:var(--dim);
+    border-top:1px solid var(--rule);margin-top:.1rem;padding-top:.55rem}
+  .mfoot .mk{font-size:.72rem}
+  .mfoot .val{color:var(--dim)} .mfoot .val.warn{color:var(--warn);font-weight:700} .mfoot .val.stale{color:var(--faint)}
+
+  .darkbox{display:flex;align-items:center;gap:.6rem;padding:.9rem .2rem;color:var(--faint);
+    font-family:var(--mono);font-size:.86rem}
+  .darkbox .line{flex:1;height:1px;background:repeating-linear-gradient(90deg,var(--faint) 0 5px,transparent 5px 10px);opacity:.5}
+
+  .quorum{display:flex;align-items:center;gap:.6rem;font-family:var(--mono);font-size:.84rem}
+  .quorum .pips{display:flex;gap:.18rem}
+  .quorum .pip{width:.45rem;height:1rem;border-radius:2px;background:rgba(232,226,210,.14)}
+  .quorum .pip.on{background:var(--down);box-shadow:0 0 6px rgba(232,93,66,.55)}
+  .quorum .qtxt{color:var(--dim)} .quorum .qtxt b{color:var(--ink);font-weight:800}
+  .quorum .kd{color:var(--down);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+
+  .svc{display:grid;grid-template-columns:repeat(auto-fill,minmax(15.5rem,1fr));gap:.5rem}
+  .svcchip{background:var(--panel);border:1px solid var(--rule);border-radius:9px;padding:.6rem .8rem;
+    display:flex;flex-direction:column;gap:.35rem;min-height:3.6rem;justify-content:center}
+  .svcchip.warn{border-color:rgba(255,194,75,.4)}
+  .svcchip.stale{opacity:.75}
+  .svcrow{display:flex;align-items:center;gap:.5rem}
+  .svcchip .st{width:.55rem;height:.55rem;border-radius:99px;background:var(--up);flex:none}
+  .svcchip.warn .st{background:var(--warn)}
+  .svcchip.stale .st{background:transparent;border:1px solid var(--faint)}
+  .svctarget{font-family:var(--mono);font-size:1rem;font-weight:700;color:var(--ink);letter-spacing:.02em;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .svctype{margin-left:auto;font-family:var(--mono);font-size:.66rem;font-weight:700;text-transform:uppercase;
+    letter-spacing:.08em;color:var(--dim);background:rgba(232,226,210,.09);border-radius:99px;padding:.14rem .5rem;flex:none}
+  .svcchip .det{font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--up);padding-left:1.05rem}
+  .svcchip.warn .det{color:var(--warn)}
+  .svcchip.stale .det{color:var(--faint)}
+
+  /* a DOWN service is the only quorum-confirmed outage on the page: give it a full card, loudest thing here */
+  .svccard{grid-column:1/-1;background:rgba(232,93,66,.09);border:1px solid rgba(232,93,66,.5);
+    border-left:4px solid var(--down);border-radius:11px;padding:.9rem 1.15rem;
+    display:flex;flex-direction:column;gap:.6rem}
+  .svccard .scrow{display:flex;align-items:center;gap:.7rem}
+  .svccard .st{width:.7rem;height:.7rem;border-radius:99px;background:var(--down);
+    box-shadow:0 0 0 4px rgba(232,93,66,.22);flex:none}
+  .svccard .starget{font-family:var(--mono);font-size:1.35rem;font-weight:800;color:var(--ink);letter-spacing:.02em}
+  .svccard .downtag{font-family:var(--mono);font-size:.72rem;font-weight:900;letter-spacing:.1em;
+    color:var(--dusk);background:var(--down);border-radius:5px;padding:.16rem .55rem}
+  .svccard .scq{display:flex;align-items:center;gap:.7rem;font-family:var(--mono);font-size:.92rem;color:var(--dim)}
+  .svccard .scq .rest{color:var(--down);font-weight:800}
+
+  footer{margin-top:2.8rem;font-family:var(--mono);font-size:.72rem;color:var(--faint);
+    display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;padding-top:.9rem}
   #err{display:none;margin:1rem 0;padding:.8rem 1rem;border:1px solid var(--down);border-radius:8px;color:var(--down);font-size:.85rem}
   #gear{margin-left:auto;background:none;border:0;color:var(--dim);font-size:1rem;cursor:pointer;padding:0}
   #gear:hover{color:var(--warn)}
-  dialog{background:var(--card);color:var(--ink);border:1px solid var(--rule);border-radius:10px;max-width:26rem;width:92%;padding:1.3rem}
+  dialog{background:var(--panel);color:var(--ink);border:1px solid var(--rule);border-radius:10px;max-width:26rem;width:92%;padding:1.3rem}
   dialog::backdrop{background:rgba(11,31,36,.72)}
   dialog h2{font-size:1rem;font-weight:650;margin-bottom:.5rem}
   .dlghint{color:var(--dim);font-size:.82rem;margin-bottom:1rem}
@@ -117,13 +199,26 @@
 <div class="wrap">
   <header>
     <span class="brand">photinus</span>
-    <h1 id="who">…</h1>
-    <span class="summary" id="sum"></span>
+    <span class="who" id="who">…</span>
+    <input class="search" id="search" type="search" placeholder="filter hosts, arch, state…   /" aria-label="filter">
+    <button class="clearbtn" id="clearbtn" hidden>✕ clear</button>
+    <button class="orderbtn" id="orderbtn" title="which section sits on top">⇅ <span id="orderlbl">services first</span></button>
   </header>
-  <canvas id="field" aria-hidden="true"></canvas>
+  <div class="hero" id="hero"></div>
+  <div class="tip" id="tip"></div>
   <div id="err">The lantern stopped answering. This page is served from its memory, so if you can read this after a reload, the lantern process itself is gone on this box. Ask another lantern.</div>
-  <div class="grid" id="hosts"></div>
-  <div class="grid services" id="services"></div>
+
+  <div class="sections" id="sections">
+    <section id="sec-svc">
+      <div class="vlabel">watched services</div>
+      <div class="svc" id="svc"></div>
+    </section>
+    <section id="sec-swarm">
+      <div class="vlabel">swarm</div>
+      <div class="meters" id="meters"></div>
+    </section>
+  </div>
+
   <footer>
     <span id="served"></span>
     <span id="via"></span>
@@ -147,247 +242,323 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-function rank(s){ if(!s.voters) return 3; if(s.state==="down") return 0; if(s.state==="warn") return 1; if(s.votes>0) return 2; return 4; }
-function word(s){ if(!s.voters) return ["?","stale"]; if(s.state==="down") return ["DOWN","down"]; if(s.state==="warn") return ["WARN","warn"]; if(s.votes>0) return ["SUS","warn"]; return ["UP","up"]; }
-function trimDetail(s){
-  let d = s.detail || "";
-  const rx = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  if (s.check.startsWith("disk:")) return d.replace(new RegExp("^disk "+rx(s.check.slice(5))+" is "), "");
-  // Escaped like the disk branch: a future check name with a regex
-  // character must trim imperfectly, not throw and take render with it.
-  return d.replace(new RegExp("^"+rx(s.check)+" is "), "");
-}
+// ---- swarm state, rebuilt from /status.json on every tick ----
+let hosts = [], services = [], lit = 0, known = 0, drift = 0, skewInfo = "";
+let filterText = "";
 
-// The landing page metaphor, but truthful: every firefly is a real box.
-// The flies do not fly: each lantern holds a fixed constellation spot,
-// deterministic from its name, and the animation is the light. Lit ones
-// start on their own beat and entrain into unison, the thing the species
-// is named for. Ailing ones cannot hold the rhythm and flash off-beat and
-// dim, dead ones sit ember and never pulse, unknowns are hollow ghosts.
-// Position only changes when the swarm itself changes.
-const field = $("field"), fctx = field.getContext("2d");
-const flies = new Map();
-const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const BEAT = 2.6; // rad/s, the swarm's shared flash rhythm
-function hash01(s){ let h = 0; for (const c of s) h = (h*31 + c.charCodeAt(0)) | 0; return (h>>>0)/4294967295; }
-function syncFlies(states){
-  const seen = new Set();
-  const sorted = [...states].sort((a,b) => a.name < b.name ? -1 : 1);
-  sorted.forEach((st, i) => {
-    seen.add(st.name);
-    const n = sorted.length;
-    // The swarm sits on a ring inscribed in the field, straight gossip
-    // chords across it: a round constellation, not a skyline. Each
-    // lantern gets a seat by sorted name, starting at the top, with a
-    // whisper of per-name radius so the ring stays organic.
-    let f = flies.get(st.name);
-    if (!f){
-      // Born out of step: a fresh phase offset that the beat will reel in.
-      f = {ph:(Math.random()-.5)*2.2, jit:hash01(st.name)*6.28};
-      flies.set(st.name, f);
-    }
-    // Irregular on purpose: each lantern drifts off its even seat by a
-    // name-determined nudge in angle and radius, so the ring reads as a
-    // constellation rather than a regular polygon. The angular nudge
-    // stays under a third of a seat, which keeps neighbors apart.
-    const seat = 2*Math.PI/n;
-    f.ang = -Math.PI/2 + i*seat + (hash01(st.name) - .5)*seat*.6;
-    // Radius wanders wider for spread, but never below .78: a node that
-    // dips too far inward folds the outline into sharp angles.
-    f.rad = n === 1 ? 0 : .78 + hash01(st.name + "r")*.42;
-    f.mode = st.mode;
-  });
-  for (const k of [...flies.keys()]) if (!seen.has(k)) flies.delete(k);
-}
-function drawField(t){
-  const W = field.clientWidth, H = field.clientHeight, dpr = window.devicePixelRatio||1;
-  if (field.width !== Math.round(W*dpr)){ field.width = Math.round(W*dpr); field.height = Math.round(H*dpr); }
-  fctx.setTransform(dpr,0,0,dpr,0,0);
-  fctx.clearRect(0,0,W,H);
-  const tt = t/1000;
-  // The swarm's shared beat, and how bright it is right now: the mesh
-  // lines breathe with it, so each synchronized flash washes over the web.
-  const beat = Math.pow(Math.max(0, Math.sin(tt*BEAT)), 4);
-  // Faint mesh lines first, under the flies: the gossip paths. Links to a
-  // dead box fade toward ember and do not carry the beat.
-  // Seat every fly on the ring first, easing toward it, so the chords
-  // below share exact positions with the dots. Position only moves when
-  // the swarm's roster changes.
-  // A gentle ellipse rather than a strict circle: it spreads across the
-  // field's width, capped at 1.6 to 1 so the shape stays round-ish and
-  // its ends never sharpen into points.
-  const Ry = (H - 30)/2 - 34;
-  const Rx = Math.min(W/2 - 60, Ry*1.6);
-  for (const f of flies.values()){
-    const tx = W/2 + f.rad*Rx*Math.cos(f.ang);
-    const ty = 8 + (H - 30)/2 + f.rad*Ry*Math.sin(f.ang);
-    if (f.px === undefined){ f.px = tx; f.py = ty; }
-    f.px += (tx - f.px)*.03;
-    f.py += (ty - f.py)*.03;
-  }
-  const pts = [...flies.values()].map(f => ({x:f.px, y:f.py, dead:f.mode==="dead"}));
-  const lineAlpha = reduced ? .07 : .05 + .07*beat;
-  for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++){
-    const a=pts[i], b=pts[j], anyDead = a.dead||b.dead;
-    fctx.beginPath();
-    fctx.strokeStyle = anyDead ? "rgba(224,106,80,.10)" : "rgba(232,226,210,"+lineAlpha.toFixed(3)+")";
-    fctx.lineWidth = 1;
-    fctx.moveTo(a.x,a.y); fctx.lineTo(b.x,b.y); fctx.stroke();
-  }
-  for (const [name,f] of flies){
-    if (f.mode!=="worse"){
-      // Entrainment: whatever phase this fly joined on decays toward the
-      // swarm's beat over about twenty seconds. Watchable on page load.
-      f.ph *= .9988;
-    } else if (!reduced){
-      // An ailing box cannot hold the rhythm: its phase wanders.
-      f.ph += (Math.random()-.5)*.02;
-    }
-    const x = f.px, y = f.py;
-    let color = "#FFC24B", alpha, r = 4.5;
-    if (f.mode==="dead"){ color = "#E06A50"; alpha = .95; }
-    else if (f.mode==="ghost"){ color = "#8FA5A3"; alpha = .35; }
-    else if (f.mode==="worse"){
-      alpha = reduced ? .55 : .16 + .42*Math.pow(Math.max(0, Math.sin((tt + f.ph)*BEAT + f.jit)), 6);
-    } else {
-      alpha = reduced ? .9 : .22 + .78*Math.pow(Math.max(0, Math.sin((tt + f.ph)*BEAT)), 4);
-    }
-    fctx.beginPath();
-    fctx.globalAlpha = Math.min(1, alpha);
-    fctx.fillStyle = color;
-    fctx.shadowColor = color;
-    fctx.shadowBlur = f.mode==="dead" ? 7 : 16*alpha;
-    fctx.arc(x, y, r, 0, 7);
-    fctx.fill();
-    fctx.shadowBlur = 0;
-    fctx.globalAlpha = f.mode==="dead" ? .6 : .4;
-    fctx.font = "10px ui-monospace,Menlo,monospace";
-    fctx.textAlign = "center";
-    fctx.fillStyle = f.mode==="dead" ? "#E06A50" : "#8FA5A3";
-    fctx.fillText(name.split(".")[0].toUpperCase(), x, y + 18);
-  }
-  requestAnimationFrame(drawField);
-}
-requestAnimationFrame(drawField);
+// reading the wire: a subject carries a state and a detail sentence, no raw
+// numbers, so the bar values and thresholds are parsed back out of the detail.
+function wordCls(s){ if(!s.voters) return "stale"; if(s.state==="down") return "down"; if(s.state==="warn"||s.votes>0) return "warn"; return "up"; }
+function pctNum(s){ const m=/(\d+(?:\.\d+)?)\s*%/.exec(s.detail||""); return m?parseFloat(m[1]):NaN; }
+// the threshold only rides the detail once a check is warning; an OK check
+// keeps its threshold to itself, so the bar simply stays green until it trips.
+function thresholdOf(s){ const m=/threshold is (\d+(?:\.\d+)?)/.exec(s.detail||""); return m?parseFloat(m[1]):0; }
+function netVal(s){ const m=/net is (\S+) in, (\S+) out/.exec(s.detail||""); return m?`${m[1]}↓ ${m[2]}↑`:"?"; }
+function upVal(s){ let m=/up for (.+)$/.exec(s.detail||""); if(m) return m[1]; m=/rebooted (.+?) ago/.exec(s.detail||""); if(m) return "rebooted "+m[1]; return s.detail||"?"; }
+function shortReason(d){ d=d||""; const i=d.lastIndexOf(": "); return i>=0?d.slice(i+2):d; }
+function svcType(s){ if(s.check==="http") return s.target.startsWith("http://")?"http":"https"; if(s.check==="cert") return "cert"; if(s.check==="tcp") return s.target.endsWith(":22")?"ssh":"tcp"; return s.check; }
 
-// Faint distro marks in the card corner. Simple original shapes that read
-// as the distro without pretending to be official artwork.
-const distroLogos = {
-  ubuntu: '<svg viewBox="0 0 100 100"><g fill="currentColor"><circle cx="50" cy="50" r="26" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="50" cy="13" r="10"/><circle cx="18" cy="69" r="10"/><circle cx="82" cy="69" r="10"/></g></svg>',
-  debian: '<svg viewBox="0 0 100 100"><path fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" d="M63 47c1 8-6 14-13 13-8-1-13-8-11-16 2-9 11-14 20-11 10 3 15 14 11 24-4 11-17 17-28 12-12-5-18-19-12-31"/></svg>',
-  macos:  '<svg viewBox="0 0 100 100"><g fill="currentColor"><path fill-rule="evenodd" d="M52 30a26 26 0 1 0 0 52 26 26 0 0 0 0-52Zm22 6a12 12 0 1 0 .1 0Z"/><ellipse cx="60" cy="22" rx="11" ry="6" transform="rotate(-32 60 22)"/></g></svg>',
-  windows:'<svg viewBox="0 0 100 100"><g fill="currentColor"><rect x="18" y="22" width="28" height="26" transform="skewY(-4)"/><rect x="52" y="20" width="30" height="28" transform="skewY(-4)"/><rect x="18" y="54" width="28" height="26" transform="skewY(-4)"/><rect x="52" y="54" width="30" height="28" transform="skewY(-4)"/></g></svg>',
-};
-distroLogos.raspbian = distroLogos.ubuntu;
+const rank = {down:0, warn:1, stale:2, up:3};
+const grouped = arr => arr.slice().sort((a,b)=> rank[a.worst||a.s]-rank[b.worst||b.s] || (a.name||a.target).localeCompare(b.name||b.target));
 
-// A pill glitches on the render right after its state changes. Subjects are
-// keyed so a change is a change, not the whole board glitching on first load.
-let lastState = new Map();
-function render(st){
-  // A lantern with nothing to report yet serves subjects as null; that is
-  // an empty board, not a dead door.
+function ingest(st){
   st.subjects = st.subjects || [];
-  const nowState = new Map();
-  const mark = (key, token) => {
-    const changed = lastState.has(key) && lastState.get(key) !== token;
-    nowState.set(key, token);
-    return changed ? " glitch" : "";
-  };
-  $("who").innerHTML = `lantern <span class="pill name" title="${esc(st.id)}">${esc(st.id.split(".")[0].toUpperCase())}</span>`;
-  const downs = st.subjects.filter(s=>s.voters && s.state==="down").length;
-  const warns = st.subjects.filter(s=>s.voters && s.state==="warn").length;
-  let extra = downs||warns
-    ? (downs? `<span class="pill down">${downs} DOWN</span>`:"") + (warns? `<span class="pill warn">${warns} warning${warns>1?"s":""}</span>`:"")
-    : `<span class="pill quiet">all quiet</span>`;
-  $("sum").innerHTML = `<span>swarm <b>${st.swarm.length}</b> lit of <b>${st.last_known_size}</b> known</span>` + extra;
+  const versions = st.versions || {};
+  lit = (st.swarm||[]).length; known = st.last_known_size || lit;
 
-  const hosts = {};
-  for (const s of st.subjects) if (s.check==="lantern"||s.check==="skew"||s.authority) hosts[s.target] ??= {rows:[]};
-  const services = [];
+  // a subject is a host's own business if it is the lantern liveness, the
+  // skew, or one of that lantern's authoritative local checks; everything
+  // else is a watched service.
+  const hmap = {};
+  for (const s of st.subjects) if (s.check==="lantern"||s.check==="skew"||s.authority) hmap[s.target] ??= {rows:[]};
+  const svc = [];
   for (const s of st.subjects){
-    const h = hosts[s.target];
-    if (!h) { services.push(s); continue; }
+    const h = hmap[s.target];
+    if (!h){ svc.push(s); continue; }
     if (s.check==="lantern") h.live = s;
     else if (s.check==="skew") h.skew = s;
     else h.rows.push(s);
   }
 
-  const versions = st.versions || {};
-  const distinct = new Set(Object.values(versions).filter(Boolean));
-  const mixed = distinct.size > 1;
+  drift = 0;
+  hosts = Object.keys(hmap).map(name => {
+    const h = hmap[name];
+    const plat = (versions[name]||"").split(" ")[1] || "";
+    let arch = "amd";
+    if (plat.startsWith("darwin")) arch="mac";
+    else if (plat.includes("arm")) arch="arm";
+    else if (plat.startsWith("windows")) arch="win";
 
-  const flyStates = [];
-  $("hosts").innerHTML = Object.keys(hosts).sort().map(name => {
-    const h = hosts[name];
-    let meta = "", live = "", bad = "";
+    let live="lit", worst="up", vouch="all";
     if (h.live){
-      const lt = !h.live.voters ? "ghost" : h.live.state==="down" ? "dark" : h.live.votes>0 ? "sus" : "lit";
-      const lg = mark("live|"+name, lt);
-      if (!h.live.voters) live = `<span class="pill ghost${lg}">no fresh word</span>`;
-      else if (h.live.state==="down"){ live = `<span class="pill down${lg}">DARK · ${h.live.votes}/${h.live.voters}, quorum ${h.live.needed}</span>`; bad="trouble"; }
-      else if (h.live.votes>0) live = `<span class="pill warn${lg}">suspected ${h.live.votes}/${h.live.voters}</span>`;
-      else live = `<span class="pill quiet${lg}">lit · ${h.live.voters >= st.swarm.length-1 ? "all vouch" : h.live.voters + " vouch"}</span>`;
-      live = `<span class="liv">${live}</span>`;
+      if (!h.live.voters){ live="ghost"; worst="stale"; vouch="?"; }
+      else if (h.live.state==="down"){ live="dark"; worst="down"; vouch=h.live.votes+"/"+h.live.voters; }
+      else if (h.live.votes>0){ worst="warn"; vouch=h.live.voters>=lit-1?"all":String(h.live.voters); }
+      else vouch = h.live.voters>=lit-1 ? "all" : String(h.live.voters);
     }
-    if (h.skew && h.skew.voters && (h.skew.state!=="up"||h.skew.votes>0)){
-      meta += ` <span class="meta sus" title="peers measure this box's clock against their own from flash timestamps; drifting means beyond 5s by quorum">clock drifting</span>`;
+    if (h.skew && h.skew.voters && (h.skew.state!=="up"||h.skew.votes>0)){ drift++; if(worst==="up") worst="warn"; }
+
+    const bars=[]; let net=null, up=null;
+    for (const s of h.rows){
+      const cls = wordCls(s);
+      if (s.check==="net"){ net={v:netVal(s), s:cls}; continue; }
+      if (s.check==="uptime"){ up={v:upVal(s), s:cls}; continue; }
+      const pct = pctNum(s);
+      const label = s.check==="memory" ? "mem" : s.check==="disk:/" ? "disk"
+        : s.check.startsWith("disk:") ? "disk "+s.check.slice(5) : s.check;
+      bars.push({k:label, v:isNaN(pct)?"?":Math.round(pct)+"%", pct:isNaN(pct)?0:Math.min(100,pct), s:cls, t:thresholdOf(s)});
+      if (cls==="warn" && worst!=="down") worst="warn";
+      else if (cls==="stale" && worst==="up") worst="stale";
     }
-    h.rows.sort((a,b)=> rank(a)-rank(b) || a.check.localeCompare(b.check));
-    if (!bad && h.rows.some(s => s.voters && (s.state==="warn" || s.votes>0))) bad = "warned";
-    const rows = h.rows.map(s => {
-      const [w,cls] = word(s);
-      const g = mark(name+"|"+s.check+"|"+s.target, w);
-      const label = s.check === "disk:/" ? "disk" : s.check.startsWith("disk:") ? "disk " + s.check.slice(5) : s.check;
-      return `<tr><td class="st ${cls}${g}"><span>${w}</span></td><td class="chk">${esc(label)}</td><td class="det">${esc(trimDetail(s))}</td></tr>`;
-    }).join("");
-    let mode = "lit";
-    if (h.live){
-      if (!h.live.voters) mode = "ghost";
-      else if (h.live.state==="down") mode = "dead";
-      else if (h.live.votes>0 || bad==="warned") mode = "worse";
-    } else if (bad==="warned") mode = "worse";
-    flyStates.push({name, mode});
-    const platform = (versions[name]||"").split(" ")[1] || "";
-    let archCls = "";
-    if (platform.startsWith("darwin")) archCls = "arch-mac";
-    else if (platform.includes("arm")) archCls = "arch-arm";
-    else if (platform.startsWith("windows")) archCls = "arch-win";
-    const shortName = name.split(".")[0].toUpperCase();
-    const archTag = platform ? `<span class="meta" style="font-weight:400;opacity:.8">${esc(platform)}</span>` : "";
-    const vfoot = `<div class="vfoot">${versions[name] ? "photinus " + esc(versions[name].split(" ")[0]) : "version unknown"}</div>`;
-    const distro = (versions[name]||"").split(" ")[2] || "";
-    let dlogo = "";
-    if (distro && distroLogos[distro]) dlogo = `<div class="dlogo">${distroLogos[distro]}</div>`;
-    else if (distro) dlogo = `<div class="dlogo dtext">${esc(distro)}</div>`;
-    return `<div class="card ${bad}"><h2><span class="hn ${archCls}" title="${esc(name)} · ${esc(versions[name]||"version unknown")}">${esc(shortName)}</span>${archTag} ${meta}${live}</h2><table>${rows}</table>${vfoot}${dlogo}</div>`;
-  }).join("");
+    return {name:name.split(".")[0].toUpperCase(), full:name, plat, arch, live, worst, vouch, bars, net, up};
+  });
 
-  syncFlies(flyStates);
+  services = svc.map(s => {
+    const cls = wordCls(s);
+    let det;
+    if (cls==="down") det = `${s.votes}/${s.voters} agree · ${shortReason(s.detail)}`;
+    else if (!s.voters) det = "no fresh word";
+    else det = s.detail || "";
+    return {type:svcType(s), target:s.target, s:cls, det};
+  });
 
-  const svcType = s => {
-    if (s.check==="http") return s.target.startsWith("http://") ? "http" : "https";
-    if (s.check==="cert") return "cert";
-    if (s.check==="tcp") return s.target.endsWith(":22") ? "ssh" : "tcp";
-    return s.check;
-  };
-  services.sort((a,b)=> svcType(a).localeCompare(svcType(b)) || rank(a)-rank(b) || a.target.localeCompare(b.target));
-  $("services").innerHTML = services.length ? `<div class="card"><h2>watched services</h2><table>` +
-    services.map(s => {
-      const [w,cls] = word(s);
-      const g = mark("svc|"+s.check+"|"+s.target, w);
-      const agree = !s.voters ? "no fresh word" : s.authority ? "own report"
-        : (s.state!=="up"||s.votes>0) ? `${s.votes}/${s.voters}, quorum ${s.needed}` : `${s.voters} lantern${s.voters>1?"s":""}`;
-      return `<tr><td class="st ${cls}${g}"><span>${w}</span></td><td class="chk"><span class="typ">${svcType(s)}</span>${esc(s.target)}<span class="det">${esc(s.detail||"")} <span class="agree">· ${agree}</span></span></td></tr>`;
-    }).join("") + `</table></div>` : "";
-
-  $("served").textContent = "served by " + st.id.split(".")[0].toUpperCase();
-  $("stamp").textContent = "refreshed " + new Date().toLocaleTimeString();
-  lastState = nowState;
+  skewInfo = drift ? `${drift} clock${drift>1?"s":""} drifting` : "clocks in sync";
 }
 
-// Doors and tokens. The page's own origin is always the first door; every
-// endpoint the swarm reports is remembered so failover survives a reload
-// even when the favorite door is already dark. Tokens are per origin.
+function countUp(el,from,to,suf,dur){
+  const start=performance.now();
+  (function step(t){const p=Math.min(1,(t-start)/dur);const e=1-Math.pow(1-p,3);
+    el.textContent=Math.round(from+(to-from)*e)+suf;if(p<1)requestAnimationFrame(step);})(start);
+}
+// the tab itself becomes a passive pager: icon + title reflect worst state
+function updateTab(downs,warns){
+  const base="photinus";
+  document.title=downs?`(${downs}↓) ${base}`:warns?`(${warns}!) ${base}`:base;
+  const color=downs?"#E85D42":warns?"#FFC24B":"#54C489";
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="${color}"/></svg>`;
+  let link=document.querySelector('link[rel="icon"]');
+  if(!link){link=document.createElement("link");link.rel="icon";document.head.appendChild(link);}
+  link.href="data:image/svg+xml,"+encodeURIComponent(svg);
+}
+
+function renderHero(){
+  const downs=hosts.filter(h=>h.worst==="down").length+services.filter(s=>s.s==="down").length;
+  const warns=hosts.filter(h=>h.worst==="warn").length+services.filter(s=>s.s==="warn").length;
+  const dot=h=>{const st=h.worst==="up"?"":h.worst;
+    return `<span class="sq ${st}" data-name="${esc(h.name)}" data-label="${esc(h.name+" · "+(st||"up"))}"></span>`;};
+  const sdot=x=>{const st=x.s==="up"?"":x.s;const t=x.target.replace(/^https?:\/\//,"");
+    return `<span class="sq svc ${st}" data-name="${esc(t)}" data-label="${esc(x.type+" "+t+" · "+(st||"up"))}"></span>`;};
+  let v;
+  if(!downs&&!warns) v=`<span class="ok">all quiet</span>`;
+  else{const parts=[];
+    if(downs)parts.push(`<span class="vd">${downs} down</span>`);
+    if(warns)parts.push(`<span class="vw">${warns} warning${warns===1?"":"s"}</span>`);
+    v=parts.join(`<span class="sep"> · </span>`);}
+  const unreach=known-lit;
+  const litpart=unreach>0?`<span class="part">${lit}/${known} lit</span>`:`${lit}/${known} lit`;
+  const sk=drift?`<span class="part">${esc(skewInfo)}</span>`:`<span class="sk">${esc(skewInfo)}</span>`;
+  const health=`${litpart}<span class="sk"> · known ${known} · </span>${sk}`;
+  $("hero").innerHTML=`<div class="matrix mhosts">`+
+    grouped(hosts).map(dot).join("")+`</div><span class="matsep"></span>`+
+    `<div class="matrix msvc">`+grouped(services).map(sdot).join("")+`</div>`+
+    `<div class="hverdict"><div class="verdict">${v}</div>`+
+    `<div class="swarmhealth">${health}</div></div>`;
+  updateTab(downs,warns);
+}
+
+// bar color ramps green->amber as the value approaches its threshold, so a
+// creeping host reads before it crosses. threshold 0 (unknown, an OK check
+// keeps it to itself) means solid green: resource checks only ever WARN.
+function lerp(a,b,t){return Math.round(a+(b-a)*t);}
+function fillColor(pct,tv){
+  const up=[84,196,137],warn=[255,194,75];
+  const r=tv>0?pct/tv:0;
+  const t=r<=.75?0:r>=1?1:(r-.75)/.25;
+  return `rgb(${lerp(up[0],warn[0],t)},${lerp(up[1],warn[1],t)},${lerp(up[2],warn[2],t)})`;
+}
+// a down host is only real when the swarm agrees. draw the vouching lanterns,
+// because agreement is the whole point.
+function parseVouch(v){
+  if(!v||v==="all"||v==="?") return null;
+  if(v.includes("/")){const p=v.split("/").map(Number); return {a:p[0],b:p[1]};}
+  const n=Number(v); return isNaN(n)?null:{a:n,b:n};
+}
+function quorumHTML(v){
+  const q=parseVouch(v); if(!q) return "";
+  let pips=""; for(let i=0;i<q.b;i++) pips+=`<span class="pip ${i<q.a?"on":""}"></span>`;
+  return `<div class="quorum"><span class="pips">${pips}</span>`+
+    `<span class="qtxt"><b>${q.a} of ${q.b}</b> agree · <span class="kd">down</span></span></div>`;
+}
+// a calm host collapses to a single line: name, arch, its bars, done.
+function compactHTML(h){
+  const cb=h.bars.map(b=>{
+    const col=`background-color:${fillColor(b.pct,b.t)};`;
+    const tick=b.t>0?`<span class="tick" style="left:${b.t}%"></span>`:"";
+    return `<span class="cb"><span class="mk">${esc(b.k)}</span>`+
+      `<span class="track"><span class="fill" data-key="${esc(h.name+"|"+b.k)}" style="${col}width:${b.pct}%"></span>${tick}</span>`+
+      `<span class="mv" data-key="${esc(h.name+"|"+b.k)}">${esc(b.v)}</span></span>`;}).join("");
+  return `<div class="mrow compact" data-host="${esc(h.name)}">`+
+    `<div class="chead"><span class="dot"></span><span class="mname">${esc(h.name)}</span>`+
+    (h.plat?`<span class="mplat arch-${h.arch}">${esc(h.plat)}</span>`:"")+`</div>`+
+    `<div class="cbars">${cb}</div>`+
+    `<span class="mlive">lit · ${h.vouch==="all"?"all vouch":esc(h.vouch)+" vouch"}</span></div>`;
+}
+function cardHTML(h){
+  if(h.live==="lit"&&h.worst==="up") return compactHTML(h);
+  const liv = h.live==="dark" ? `<span class="mlive dark">DARK · ${esc(h.vouch)}</span>`
+    : h.live==="ghost" ? `<span class="mlive dark">no fresh word</span>`
+    : `<span class="mlive">lit · ${h.vouch==="all"?"all vouch":esc(h.vouch)+" vouch"}</span>`;
+  const head=`<div class="mhead"><span class="dot ${h.worst==="up"?"":h.worst}"></span>`+
+    `<span class="mname">${esc(h.name)}</span>`+
+    (h.plat?`<span class="mplat arch-${h.arch}">${esc(h.plat)}</span>`:"")+`${liv}</div>`;
+  if(h.live==="dark"||h.live==="ghost"){
+    const cls=h.live==="dark"?"down":"";
+    const q=h.live==="dark"?quorumHTML(h.vouch):"";
+    const msg=h.live==="dark"?"no fresh readings":"no fresh word";
+    return `<div class="mrow ${cls}" data-host="${esc(h.name)}">${head}${q}`+
+      `<div class="darkbox"><span class="line"></span>${msg}<span class="line"></span></div></div>`;
+  }
+  const set=h.bars.map(b=>{
+    const tick=b.t>0?`<span class="tick" style="left:${b.t}%"></span>`:"";
+    const col=`background-color:${fillColor(b.pct,b.t)};`;
+    const fill=b.s==="stale"?"":`<span class="fill ${b.s==="up"?"":b.s}" data-key="${esc(h.name+"|"+b.k)}" style="${col}width:${b.pct}%"></span>`;
+    return `<span class="mk">${esc(b.k)}</span><span class="track">${fill}${tick}</span>`+
+      `<span class="mv ${b.s==="up"?"":b.s}" data-key="${esc(h.name+"|"+b.k)}">${esc(b.v)}</span>`;}).join("");
+  const foot=(h.net||h.up)?`<div class="mfoot">`+
+    (h.net?`<span><span class="mk">net </span><span class="val ${h.net.s==="up"?"":h.net.s}">${esc(h.net.v)}</span></span>`:"")+
+    (h.up?`<span><span class="mk">uptime </span><span class="val ${h.up.s==="up"?"":h.up.s}">${esc(h.up.v)}</span></span>`:"")+
+    `</div>`:"";
+  return `<div class="mrow ${h.worst==="up"||h.worst==="stale"?"":h.worst}" data-host="${esc(h.name)}">${head}`+
+    `<div class="meterset">${set}</div>${foot}</div>`;
+}
+
+function matchHost(h){const q=filterText.trim().toLowerCase(); if(!q)return true;
+  return h.name.toLowerCase().includes(q)||(h.plat||"").toLowerCase().includes(q)||
+    (h.worst||"").includes(q)||(h.live==="dark"&&("down dark".includes(q)));}
+function matchSvc(x){const q=filterText.trim().toLowerCase(); if(!q)return true;
+  return x.target.toLowerCase().includes(q)||x.type.includes(q)||x.s.includes(q);}
+
+// FLIP: a box that worsens slides up to the trouble zone instead of jumping,
+// its bars ease to their new width and the numbers count across.
+function renderMeters(animate){
+  const box=$("meters");
+  const prev={},prevF={};
+  if(animate){
+    box.querySelectorAll(".mrow").forEach(el=>prev[el.dataset.host]=el.getBoundingClientRect());
+    box.querySelectorAll(".fill").forEach(f=>prevF[f.dataset.key]=f.style.width);
+    box.querySelectorAll(".mv[data-key]").forEach(m=>prevF["v:"+m.dataset.key]=m.textContent);
+  }
+  const list=grouped(hosts.filter(matchHost));
+  box.innerHTML=list.length?list.map(cardHTML).join(""):`<div class="empty">no lantern matches "${esc(filterText)}"</div>`;
+  if(!animate) return;
+  const reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+  box.querySelectorAll(".mrow").forEach(el=>{
+    const o=prev[el.dataset.host]; if(!o||reduce) return;
+    const n=el.getBoundingClientRect(); const dx=o.left-n.left, dy=o.top-n.top;
+    if(!dx&&!dy) return;
+    el.style.transform=`translate(${dx}px,${dy}px)`; el.style.transition="none";
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      el.style.transition="transform .6s cubic-bezier(.2,.75,.2,1)"; el.style.transform="";}));
+  });
+  box.querySelectorAll(".fill").forEach(f=>{
+    const target=f.style.width, old=prevF[f.dataset.key];
+    if(old===undefined||old===target||reduce) return;
+    f.style.transition="none"; f.style.width=old;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      f.style.transition="width .7s cubic-bezier(.3,.8,.3,1)"; f.style.width=target;}));
+  });
+  box.querySelectorAll(".mv[data-key]").forEach(m=>{
+    const old=prevF["v:"+m.dataset.key]; if(old===undefined||reduce) return;
+    const a=/^(-?\d+)(.*)$/.exec(old), b=/^(-?\d+)(.*)$/.exec(m.textContent);
+    if(a&&b&&a[1]!==b[1]&&a[2]===b[2]) countUp(m,+a[1],+b[1],b[2],700);
+  });
+}
+
+function svcDownCard(s){
+  const m=/^(\d+)\/(\d+)\s*agree/.exec(s.det);
+  let q="",rest=s.det;
+  if(m){const a=+m[1],b=+m[2];let pips="";
+    for(let i=0;i<b;i++)pips+=`<span class="pip ${i<a?"on":""}"></span>`;
+    rest=s.det.replace(/^\d+\/\d+\s*agree\s*·?\s*/,"");
+    q=`<span class="pips">${pips}</span><span class="qtxt"><b>${a} of ${b}</b> agree</span>`;}
+  return `<div class="svccard quorum" data-target="${esc(s.target)}">`+
+    `<div class="scrow"><span class="st"></span><span class="starget">${esc(s.target)}</span>`+
+    `<span class="svctype">${esc(s.type)}</span><span class="downtag">DOWN</span></div>`+
+    `<div class="scq">${q}${rest?`<span class="rest">${m?"· ":""}${esc(rest)}</span>`:""}</div></div>`;
+}
+function svcChip(s){
+  return `<div class="svcchip ${s.s==="up"?"":s.s}" data-target="${esc(s.target)}">`+
+    `<div class="svcrow"><span class="st"></span><span class="svctarget">${esc(s.target)}</span><span class="svctype">${esc(s.type)}</span></div>`+
+    `<span class="det">${esc(s.det)}</span></div>`;
+}
+function renderSvc(){
+  const list=grouped(services.filter(matchSvc));
+  $("svc").innerHTML=list.length
+    ?list.map(s=>s.s==="down"?svcDownCard(s):svcChip(s)).join("")
+    :`<div class="empty">no service matches "${esc(filterText)}"</div>`;
+}
+
+let firstPaint=true;
+function paint(){ renderHero(); renderMeters(!firstPaint); renderSvc(); firstPaint=false; }
+function render(st){
+  ingest(st);
+  $("who").innerHTML = `lantern <span class="pill name" title="${esc(st.id)}">${esc(st.id.split(".")[0].toUpperCase())}</span>`;
+  $("served").textContent = "served by " + st.id.split(".")[0].toUpperCase();
+  $("stamp").textContent = "refreshed " + new Date().toLocaleTimeString();
+  paint();
+}
+
+// ---- interactions, wired once ----
+const search=$("search"), clearbtn=$("clearbtn"), sections=$("sections"), orderbtn=$("orderbtn"), orderlbl=$("orderlbl"), tip=$("tip"), heroEl=$("hero");
+
+// section order: services-first by default (only remote checks can truly be
+// DOWN), reversible and remembered across reloads.
+function applyOrder(o){
+  const swarmFirst=o==="swarm";
+  sections.classList.toggle("swarm-first",swarmFirst);
+  orderlbl.textContent=swarmFirst?"swarm first":"services first";
+}
+function loadOrder(){try{return localStorage.getItem("photinus.order")||"svc";}catch(e){return "svc";}}
+function saveOrder(o){try{localStorage.setItem("photinus.order",o);}catch(e){}}
+let order=loadOrder(); applyOrder(order);
+orderbtn.addEventListener("click",()=>{order=order==="swarm"?"svc":"swarm"; applyOrder(order); saveOrder(order);});
+
+// one path for every filter change, so the clear affordance never drifts
+function applyFilter(){ filterText=search.value; renderMeters(false); renderSvc(); clearbtn.hidden=!search.value.trim(); }
+function clearFilter(focus){ search.value=""; applyFilter(); if(focus)search.focus(); else search.blur(); }
+search.addEventListener("input",applyFilter);
+clearbtn.addEventListener("click",()=>clearFilter(true));
+document.addEventListener("keydown",e=>{
+  if(e.key==="/"&&!/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){
+    e.preventDefault(); search.focus(); search.select();
+  } else if(e.key==="Escape"&&(document.activeElement===search||search.value)){
+    clearFilter(false);
+  }
+});
+
+// instant name tooltip on square hover (native title lags ~1s)
+heroEl.addEventListener("mouseover",e=>{const sq=e.target.closest(".sq");if(!sq)return;
+  tip.textContent=sq.dataset.label; const r=sq.getBoundingClientRect();
+  tip.style.left=(r.left+r.width/2)+"px"; tip.style.top=(r.top-6)+"px"; tip.style.display="block";});
+heroEl.addEventListener("mouseout",e=>{if(e.target.closest(".sq"))tip.style.display="none";});
+
+// click the verdict count to filter to just those; click a square to jump
+heroEl.addEventListener("click",e=>{
+  const vf=e.target.closest(".vd,.vw");
+  if(vf){ search.value=vf.classList.contains("vd")?"down":"warn"; applyFilter();
+    sections.scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  const sq=e.target.closest(".sq"); if(!sq)return;
+  const name=sq.dataset.name;
+  const sel=sq.classList.contains("svc")
+    ? document.querySelector(`.svcchip[data-target="${CSS.escape(name)}"], .svccard[data-target="${CSS.escape(name)}"]`)
+    : [...document.querySelectorAll(".mrow")].find(el=>el.dataset.host===name);
+  if(!sel)return;
+  sel.scrollIntoView({behavior:"smooth",block:"center"});
+  sel.classList.remove("hit"); void sel.offsetWidth; sel.classList.add("hit");
+});
+
+// ---- doors and tokens (unchanged): the page reaches the swarm through any
+// lantern, learns every peer's door, and fails over when its favourite dies.
 const LS_DOORS = "photinus.doors", LS_TOKENS = "photinus.tokens";
 const ownOrigin = location.origin;
 function loadDoors(){ try{ return JSON.parse(localStorage.getItem(LS_DOORS)) || []; }catch{ return []; } }
@@ -395,9 +566,8 @@ function loadTokens(){ try{ return JSON.parse(localStorage.getItem(LS_TOKENS)) |
 function saveDoors(d){ localStorage.setItem(LS_DOORS, JSON.stringify([...new Set(d)])); }
 function saveTokens(t){ localStorage.setItem(LS_TOKENS, JSON.stringify(t)); }
 
-// A browser page served over https cannot fetch a plain-http door
-// (mixed content), so those are quietly skipped. The native app has no
-// such limit and uses every door.
+// A browser page served over https cannot fetch a plain-http door (mixed
+// content), so those are quietly skipped. The native app has no such limit.
 function usableDoors(){
   const https = ownOrigin.startsWith("https:");
   const all = [ownOrigin, ...loadDoors()].filter((v,i,a)=>a.indexOf(v)===i);
@@ -417,18 +587,15 @@ async function fetchDoor(origin){
 let activeDoor = ownOrigin;
 async function tick(){
   const doors = usableDoors();
-  // Try the door that worked last, then the rest.
   const ordered = [activeDoor, ...doors.filter(d => d !== activeDoor)];
   let lastErr;
   for (const origin of ordered){
     try{
       const st = await fetchDoor(origin);
       activeDoor = origin;
-      // Learn every peer's raw door for next time. Lanterns speak plain
-      // http on the gossip port, so a browser served over https cannot use
-      // these (mixed content) and usableDoors filters them out; the native
-      // app has no such limit. A browser's failover doors are other https
-      // panels the operator adds by hand.
+      // Learn every peer's raw door for next time. Lanterns speak plain http
+      // on the gossip port; a browser served over https cannot use these
+      // (mixed content) and usableDoors filters them out.
       if (st.endpoints){
         const learned = Object.values(st.endpoints).map(hp => "http://" + hp);
         saveDoors([...loadDoors(), ...learned]);
@@ -474,9 +641,8 @@ function saveSettings(){
 
 if ("serviceWorker" in navigator){
   navigator.serviceWorker.register("/sw.js").catch(()=>{});
-  // When a new release's worker takes over mid-visit, reload once so the
-  // page on screen is the page the lantern serves. Guarded to updates
-  // only: a first install claims the page too, and must not reload it.
+  // When a new release's worker takes over mid-visit, reload once so the page
+  // on screen is the page the lantern serves. Guarded to updates only.
   const hadController = !!navigator.serviceWorker.controller;
   let swapped = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {

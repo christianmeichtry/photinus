@@ -105,6 +105,7 @@
   .mname{font-family:var(--mono);font-weight:750;font-size:1.15rem;color:var(--ink);letter-spacing:.05em}
   .mplat{font-family:var(--mono);font-size:.78rem;color:var(--faint)}
   .mplat.arch-mac{color:var(--mac)} .mplat.arch-arm{color:var(--arm)} .mplat.arch-win{color:var(--win)}
+  .mver{font-family:var(--mono);font-size:.66rem;color:var(--faint);letter-spacing:.02em;align-self:center}
   .mlive{margin-left:auto;font-family:var(--mono);font-size:.8rem;color:var(--faint);white-space:nowrap}
   .mlive.dark{color:var(--down);font-weight:700}
 
@@ -121,17 +122,21 @@
   .mv.warn{color:var(--warn);font-weight:700} .mv.down{color:var(--down);font-weight:700} .mv.stale{color:var(--faint)}
 
   /* healthy hosts collapse to one full-width row: no reason a calm box is as tall as a broken one */
-  .mrow.compact{grid-column:1/-1;flex-direction:row;align-items:center;gap:1.3rem;padding:.5rem .95rem;background:var(--panel)}
-  .mrow.compact .chead{display:flex;align-items:center;gap:.55rem;min-width:15rem;flex:none}
+  /* one-line rows: thin rules between every data point so they read apart */
+  .mrow.compact{grid-column:1/-1;flex-direction:row;align-items:center;gap:0;padding:.5rem .95rem;background:var(--panel)}
+  .mrow.compact .chead{display:flex;align-items:center;gap:.55rem;width:16rem;flex:none;overflow:hidden;padding-right:1.2rem}
   .mrow.compact .mname{font-size:1rem}
-  .mrow.compact .cbars{display:flex;gap:1.4rem;flex:1;flex-wrap:wrap;align-items:center;
-    font-family:var(--mono);font-variant-numeric:tabular-nums}
-  .mrow.compact .cb{display:flex;align-items:center;gap:.45rem}
-  .mrow.compact .cb .mk{font-size:.7rem}
-  .mrow.compact .track{position:relative;width:4.5rem;height:.55rem;background:rgba(255,255,255,.055);
+  /* fixed widths on head, label, track and value so the columns line up
+     vertically across every one-line row, not just within a row */
+  .mrow.compact .cbars{display:flex;gap:0;flex:1;flex-wrap:wrap;align-items:center;
+    border-left:1px solid var(--rule);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .mrow.compact .cb{display:flex;align-items:center;gap:.5rem;padding:0 1.15rem;border-left:1px solid var(--rule)}
+  .mrow.compact .cb:first-child{border-left:0}
+  .mrow.compact .cb .mk{font-size:.7rem;width:2.6rem;flex:none}
+  .mrow.compact .track{position:relative;width:4.5rem;flex:none;height:.55rem;background:rgba(255,255,255,.055);
     border-radius:99px;overflow:visible}
-  .mrow.compact .mv{font-size:.82rem;min-width:2.7rem}
-  .mrow.compact .mlive{font-size:.76rem;color:var(--faint);flex:none}
+  .mrow.compact .mv{font-size:.82rem;width:2.9rem;flex:none;text-align:right}
+  .mrow.compact .mlive{font-size:.76rem;color:var(--faint);flex:none;padding-left:1.2rem;border-left:1px solid var(--rule)}
 
   .mfoot{display:flex;gap:1.3rem;font-family:var(--mono);font-size:.82rem;color:var(--dim);
     border-top:1px solid var(--rule);margin-top:.1rem;padding-top:.55rem}
@@ -160,8 +165,12 @@
   .svcchip.stale .st{background:transparent;border:1px solid var(--faint)}
   .svctarget{font-family:var(--mono);font-size:1rem;font-weight:700;color:var(--ink);letter-spacing:.02em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .svctype{margin-left:auto;font-family:var(--mono);font-size:.66rem;font-weight:700;text-transform:uppercase;
-    letter-spacing:.08em;color:var(--dim);background:rgba(232,226,210,.09);border-radius:99px;padding:.14rem .5rem;flex:none}
+  .svctype{margin-left:auto;font-family:var(--mono);font-size:.72rem;font-weight:800;text-transform:uppercase;
+    letter-spacing:.09em;color:var(--ink);background:rgba(232,226,210,.16);border:1px solid var(--rule);
+    border-radius:6px;padding:.16rem .55rem;flex:none}
+  .svctype.t-cert{color:var(--mac);background:rgba(201,163,224,.15);border-color:rgba(201,163,224,.4)}
+  .svctype.t-http,.svctype.t-https{color:var(--arm);background:rgba(127,180,217,.15);border-color:rgba(127,180,217,.4)}
+  .svctype.t-tcp,.svctype.t-ssh{color:var(--win);background:rgba(224,180,163,.15);border-color:rgba(224,180,163,.4)}
   .svcchip .det{font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--up);padding-left:1.05rem}
   .svcchip.warn .det{color:var(--warn)}
   .svcchip.stale .det{color:var(--faint)}
@@ -310,7 +319,8 @@ function ingest(st){
       if (cls==="warn" && worst!=="down") worst="warn";
       else if (cls==="stale" && worst==="up") worst="stale";
     }
-    return {name:name.split(".")[0].toUpperCase(), full:name, plat, arch, live, worst, vouch, bars, net, up};
+    const ver=(versions[name]||"").split(" ")[0]||"";
+    return {name:name.split(".")[0].toUpperCase(), full:name, plat, arch, ver, live, worst, vouch, bars, net, up};
   });
 
   services = svc.map(s => {
@@ -399,7 +409,8 @@ function compactHTML(h){
       `<span class="mv" data-key="${esc(h.name+"|"+b.k)}">${esc(b.v)}</span></span>`;}).join("");
   return `<div class="mrow compact" data-host="${esc(h.name)}">`+
     `<div class="chead"><span class="dot"></span><span class="mname">${esc(h.name)}</span>`+
-    (h.plat?`<span class="mplat arch-${h.arch}">${esc(h.plat)}</span>`:"")+`</div>`+
+    (h.plat?`<span class="mplat arch-${h.arch}">${esc(h.plat)}</span>`:"")+
+    (h.ver?`<span class="mver">${esc(h.ver)}</span>`:"")+`</div>`+
     `<div class="cbars">${cb}</div>`+
     `<span class="mlive">lit · ${h.vouch==="all"?"all vouch":esc(h.vouch)+" vouch"}</span></div>`;
 }
@@ -410,7 +421,8 @@ function cardHTML(h){
     : `<span class="mlive">lit · ${h.vouch==="all"?"all vouch":esc(h.vouch)+" vouch"}</span>`;
   const head=`<div class="mhead"><span class="dot ${h.worst==="up"?"":h.worst}"></span>`+
     `<span class="mname">${esc(h.name)}</span>`+
-    (h.plat?`<span class="mplat arch-${h.arch}">${esc(h.plat)}</span>`:"")+`${liv}</div>`;
+    (h.plat?`<span class="mplat arch-${h.arch}">${esc(h.plat)}</span>`:"")+
+    (h.ver?`<span class="mver">${esc(h.ver)}</span>`:"")+`${liv}</div>`;
   if(h.live==="dark"||h.live==="ghost"){
     const cls=h.live==="dark"?"down":"";
     const q=h.live==="dark"?quorumHTML(h.vouch):"";
@@ -483,12 +495,12 @@ function svcDownCard(s){
     q=`<span class="pips">${pips}</span><span class="qtxt"><b>${a} of ${b}</b> agree</span>`;}
   return `<div class="svccard quorum" data-target="${esc(s.target)}">`+
     `<div class="scrow"><span class="st"></span><span class="starget">${esc(s.target)}</span>`+
-    `<span class="svctype">${esc(s.type)}</span><span class="downtag">DOWN</span></div>`+
+    `<span class="svctype t-${esc(s.type)}">${esc(s.type)}</span><span class="downtag">DOWN</span></div>`+
     `<div class="scq">${q}${rest?`<span class="rest">${m?"· ":""}${esc(rest)}</span>`:""}</div></div>`;
 }
 function svcChip(s){
   return `<div class="svcchip ${s.s==="up"?"":s.s}" data-target="${esc(s.target)}">`+
-    `<div class="svcrow"><span class="st"></span><span class="svctarget">${esc(s.target)}</span><span class="svctype">${esc(s.type)}</span></div>`+
+    `<div class="svcrow"><span class="st"></span><span class="svctarget">${esc(s.target)}</span><span class="svctype t-${esc(s.type)}">${esc(s.type)}</span></div>`+
     `<span class="det">${esc(s.det)}</span></div>`;
 }
 function renderSvc(){

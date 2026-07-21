@@ -31,7 +31,7 @@ now, paging through real outages. What works today:
 - Partition-safe quorum counting (a minority partition goes quiet instead of paging),
   each lantern the sole authority on its own local facts, and exactly-once paging
   through a hash-elected sender with flap damping.
-- Encrypted gossip behind a shared key, a versioned wire format so mixed-release
+- Encrypted gossip behind a shared swarm secret, a versioned wire format so mixed-release
   fleets coexist, and rolling upgrades proven box by box on the live fleet.
 - A web panel served by every lantern, no dashboard host, answering on the same port
   the gossip already uses, from local memory, with the network on fire.
@@ -55,7 +55,7 @@ go build ./cmd/photinus
 ./photinus run -id one
 
 # every other box
-./photinus run -id two -seed one.example.com:7946 -key 'a shared passphrase'
+./photinus run -id two -seed one.example.com:7946 -swarm-secret 'a shared passphrase'
 
 # any box, any time
 ./photinus status

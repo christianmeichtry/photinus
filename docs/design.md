@@ -120,10 +120,19 @@ the takeover when the elected sender dies mid-outage.*
 `internal/swarm` wraps `hashicorp/memberlist` with its default LAN config.
 Joining, failure detection, and gossip transport are memberlist's job. The
 wrapper adds exactly three things: an ever-seen ledger for the last-known-size
-rule, a broadcast queue for flashes, and a retry loop for seeds that are not
-up yet. A seed that is unreachable at startup is retried every 5 seconds until
-the first peer connects; after that, seeds stop mattering, which keeps rule 1
-honest.
+rule, a broadcast queue for flashes, and a rejoin loop. While alone, a lantern
+retries the seeds every 5 seconds until the first peer connects. Once joined it
+keeps re-joining the seeds, quietly, once a minute.
+
+*The steady re-join is not busywork, it fixes a one-sided partition that does
+not heal itself. A lantern behind NAT whose modem reboots drops off the wire
+for a few seconds; its peers reap it, but from its own side it still sees the
+whole swarm, so it never notices and never refutes (SWIM refutation needs the
+node to hear the suspicion, which is exactly the traffic it missed). It sat
+online and reported down until a human restarted it. A Join is a push/pull to
+the fixed seed list, so a periodic one puts a reaped-but-online box back on its
+own within the minute, without scaling fan-out. Seeds keep mattering for the
+life of the process; that is what keeps rule 1 honest, not their going away.*
 
 ### Last known swarm size is an ever-seen ledger
 

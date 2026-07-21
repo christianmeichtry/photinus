@@ -208,23 +208,51 @@ func Join(cfg Config) (*Swarm, error) {
 	return s, nil
 }
 
-// keepJoining retries the seed list until at least one peer is reachable.
-// After the first success the swarm heals itself and seeds stop mattering.
+// rejoiner is the slice of memberlist the rejoin loop drives, small enough to
+// fake in a test without standing up a real gossip network.
+type rejoiner interface {
+	NumMembers() int
+	Join([]string) (int, error)
+}
+
+// keepJoining keeps this lantern reachable to the swarm for the whole life of
+// the process, not just at startup.
+//
+// While alone it retries the seeds every few seconds until one answers. Once
+// joined it keeps re-joining on a slow heartbeat, because the dangerous case
+// is one-sided: a box that briefly drops off the network (a NAT lantern whose
+// modem reboots, say) gets reaped by its peers, yet from its own side it still
+// sees the whole swarm, so it never notices and nothing else ever puts it
+// back. It sits there online and reported down until someone restarts it. A
+// Join is a push/pull to the fixed seed list, so a periodic one heals that
+// split within an interval, without scaling fan-out or hammering the wire.
 func (s *Swarm) keepJoining(seeds []string) {
+	s.rejoinLoop(s.ml, seeds, 5*time.Second, 60*time.Second)
+}
+
+func (s *Swarm) rejoinLoop(r rejoiner, seeds []string, lonely, steady time.Duration) {
+	joined := false
 	for {
-		if s.ml.NumMembers() > 1 {
-			return
-		}
-		if n, err := s.ml.Join(seeds); err != nil {
+		n, err := r.Join(seeds)
+		switch {
+		case err != nil && !joined:
 			s.log.Printf("no seed reachable yet, still flashing alone: %v", err)
-		} else if n > 0 {
+		case n > 0 && !joined:
 			s.log.Printf("joined the swarm through %d seed(s)", n)
-			return
+			joined = true
+		}
+		// Alone means either we never joined or we just lost every peer:
+		// retry hard and let the next failure speak up. With peers, the
+		// re-Join is a quiet reintroduction and must not chatter.
+		wait := steady
+		if r.NumMembers() <= 1 {
+			joined = false
+			wait = lonely
 		}
 		select {
 		case <-s.stop:
 			return
-		case <-time.After(5 * time.Second):
+		case <-time.After(wait):
 		}
 	}
 }

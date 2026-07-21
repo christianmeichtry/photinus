@@ -24,13 +24,13 @@ func TestLoadConfig(t *testing.T) {
 id: jawa
 bind: 0.0.0.0:7946
 advertise: jawa.example.com
-key: "example-swarm-key"
+swarm_secret: "example-swarm-key"
 interval: 3s
 skew_max: 10s
 notify: /usr/local/bin/pager
 socket: /run/photinus.sock
 panel: 127.0.0.1:8946
-panel_token: sekrit
+swarm_token: sekrit
 defaults: false
 seeds:
   - jawa.example.com:7946
@@ -46,7 +46,7 @@ watch:
 		if err != nil {
 			t.Fatalf("loadConfig: %v", err)
 		}
-		if fc.ID != "jawa" || fc.Advertise != "jawa.example.com" || fc.Key != "example-swarm-key" {
+		if fc.ID != "jawa" || fc.Advertise != "jawa.example.com" || fc.SwarmSecret != "example-swarm-key" {
 			t.Errorf("string fields wrong: %+v", fc)
 		}
 		if time.Duration(fc.Interval) != 3*time.Second || time.Duration(fc.SkewMax) != 10*time.Second {
@@ -85,24 +85,24 @@ watch:
 func TestMergeConfig(t *testing.T) {
 	no := false
 	fc := &fileConfig{
-		ID:       "filebox",
-		Key:      "file key",
-		Interval: duration(9 * time.Second),
-		Defaults: &no,
-		Seeds:    []string{"file:7946"},
+		ID:          "filebox",
+		SwarmSecret: "file key",
+		Interval:    duration(9 * time.Second),
+		Defaults:    &no,
+		Seeds:       []string{"file:7946"},
 	}
 
 	t.Run("the file fills what flags left unset", func(t *testing.T) {
-		id, bind, advertise, key, notifyCmd, socket, panel, panelToken := "hosty", "", "", "", "", "", "", ""
+		id, bind, advertise, swarmSecret, notifyCmd, socket, panel, swarmToken := "hosty", "", "", "", "", "", "", ""
 		notifyURL, notifyURLToken := "", ""
 		interval, skewMax, alertDelay := 2*time.Second, 5*time.Second, 2*time.Minute
 		defaults := true
 		var seeds, watches, expect stringList
-		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &key, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &panelToken,
+		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &swarmSecret, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &swarmToken,
 			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
-		if id != "filebox" || key != "file key" || interval != 9*time.Second || defaults || len(seeds) != 1 {
-			t.Errorf("file values not applied: id=%q key=%q interval=%v defaults=%v seeds=%v",
-				id, key, interval, defaults, seeds)
+		if id != "filebox" || swarmSecret != "file key" || interval != 9*time.Second || defaults || len(seeds) != 1 {
+			t.Errorf("file values not applied: id=%q secret=%q interval=%v defaults=%v seeds=%v",
+				id, swarmSecret, interval, defaults, seeds)
 		}
 		if skewMax != 5*time.Second {
 			t.Errorf("a field the file does not mention changed: skewMax=%v", skewMax)
@@ -110,35 +110,35 @@ func TestMergeConfig(t *testing.T) {
 	})
 
 	t.Run("a flag given on the command line always wins", func(t *testing.T) {
-		id, key := "flagbox", "flag key"
-		bind, advertise, notifyCmd, socket, panel, panelToken := "", "", "", "", "", ""
+		id, swarmSecret := "flagbox", "flag key"
+		bind, advertise, notifyCmd, socket, panel, swarmToken := "", "", "", "", "", ""
 		notifyURL, notifyURLToken := "", ""
 		interval, skewMax, alertDelay := 4*time.Second, 5*time.Second, 2*time.Minute
 		defaults := true
 		seeds := stringList{"flag:7946"}
 		var watches, expect stringList
-		set := map[string]bool{"id": true, "key": true, "interval": true, "defaults": true, "seed": true}
-		mergeConfig(fc, set, &id, &bind, &advertise, &key, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &panelToken,
+		set := map[string]bool{"id": true, "swarm-secret": true, "interval": true, "defaults": true, "seed": true}
+		mergeConfig(fc, set, &id, &bind, &advertise, &swarmSecret, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &swarmToken,
 			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
-		if id != "flagbox" || key != "flag key" || interval != 4*time.Second || !defaults || seeds[0] != "flag:7946" {
-			t.Errorf("flag values overridden by the file: id=%q key=%q interval=%v defaults=%v seeds=%v",
-				id, key, interval, defaults, seeds)
+		if id != "flagbox" || swarmSecret != "flag key" || interval != 4*time.Second || !defaults || seeds[0] != "flag:7946" {
+			t.Errorf("flag values overridden by the file: id=%q secret=%q interval=%v defaults=%v seeds=%v",
+				id, swarmSecret, interval, defaults, seeds)
 		}
 	})
 
 	t.Run("the file wins over an environment default", func(t *testing.T) {
-		// $PHOTINUS_KEY lands in the flag's default value, so the flag is
+		// $PHOTINUS_SWARM_SECRET lands in the flag's default value, so the flag is
 		// not in the set map; the file is the box's source of truth.
-		key := "env key"
-		id, bind, advertise, notifyCmd, socket, panel, panelToken := "", "", "", "", "", "", ""
+		swarmSecret := "env key"
+		id, bind, advertise, notifyCmd, socket, panel, swarmToken := "", "", "", "", "", "", ""
 		notifyURL, notifyURLToken := "", ""
 		interval, skewMax, alertDelay := 2*time.Second, 5*time.Second, 2*time.Minute
 		defaults := true
 		var seeds, watches, expect stringList
-		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &key, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &panelToken,
+		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &swarmSecret, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &swarmToken,
 			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
-		if key != "file key" {
-			t.Errorf("key = %q, want the file's word over the environment's", key)
+		if swarmSecret != "file key" {
+			t.Errorf("secret = %q, want the file's word over the environment's", swarmSecret)
 		}
 	})
 }

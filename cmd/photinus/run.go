@@ -38,7 +38,7 @@ func runCmd(args []string) error {
 	id := fs.String("id", hostname, "this lantern's name, unique in the swarm")
 	bind := fs.String("bind", "0.0.0.0:7946", "host:port the gossip layer listens on")
 	advertise := fs.String("advertise", "", "host[:port] peers should reach this lantern on, when that differs from -bind (NAT, several interfaces)")
-	key := fs.String("key", os.Getenv("PHOTINUS_KEY"), "shared swarm secret: encrypts gossip so only lanterns with the same key can join (defaults to $PHOTINUS_KEY, empty runs open)")
+	swarmSecret := fs.String("swarm-secret", os.Getenv("PHOTINUS_SWARM_SECRET"), "shared swarm secret: encrypts gossip so only lanterns holding it can join (defaults to $PHOTINUS_SWARM_SECRET, empty runs open)")
 	interval := fs.Duration("interval", 2*time.Second, "time between flashes")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	alertDelay := fs.Duration("alert-delay", 2*time.Minute, "how long a subject must stay down before the first page; brief blips under this are logged but never paged, 0 pages the instant quorum agrees")
@@ -47,7 +47,7 @@ func runCmd(args []string) error {
 	notifyURLToken := fs.String("notify-url-token", os.Getenv("PHOTINUS_NOTIFY_TOKEN"), "bearer token sent with every -notify-url post (defaults to $PHOTINUS_NOTIFY_TOKEN, empty sends none)")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
 	panel := fs.String("panel", "", "also serve the read-only web status panel on this extra address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
-	panelToken := fs.String("panel-token", os.Getenv("PHOTINUS_PANEL_TOKEN"), "bearer token guarding status data; when set, the gossip port also answers the panel and /status.json (app and browser reach the swarm through the one open port). Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_PANEL_TOKEN")
+	swarmToken := fs.String("swarm-token", os.Getenv("PHOTINUS_SWARM_TOKEN"), "bearer token guarding status reads; when set, the gossip port also answers the panel and /status.json, so the app and a browser reach the swarm through the one open port. Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_SWARM_TOKEN")
 	defaults := fs.Bool("defaults", true, "run the standard local checks (disk:/, cpu, memory, swap, uptime, net) without naming them")
 	var seeds, watches, expect stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
@@ -75,14 +75,14 @@ func runCmd(args []string) error {
 			return err
 		}
 	} else {
-		if fc.Key != "" {
+		if fc.SwarmSecret != "" {
 			if info, err := os.Stat(cfgPath); err == nil && info.Mode().Perm()&0o044 != 0 {
 				cfgKeyReadable = true
 			}
 		}
 		set := make(map[string]bool)
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
-		mergeConfig(fc, set, id, bind, advertise, key, notifyCmd, notifyURL, notifyURLToken, socket, panel, panelToken,
+		mergeConfig(fc, set, id, bind, advertise, swarmSecret, notifyCmd, notifyURL, notifyURLToken, socket, panel, swarmToken,
 			interval, skewMax, alertDelay, defaults, &seeds, &watches, &expect)
 	}
 
@@ -150,8 +150,8 @@ func runCmd(args []string) error {
 	// A token opens the panel on the gossip port itself, so the app and a
 	// browser reach the swarm through the one port every box already opens.
 	var muxHTTP http.Handler
-	if *panelToken != "" {
-		muxHTTP = statusHandler(*panelToken, lan)
+	if *swarmToken != "" {
+		muxHTTP = statusHandler(*swarmToken, lan)
 	}
 
 	sw, err := swarm.Join(swarm.Config{
@@ -159,7 +159,7 @@ func runCmd(args []string) error {
 		Bind:      *bind,
 		Seeds:     seeds,
 		Advertise: *advertise,
-		Key:       *key,
+		Key:       *swarmSecret,
 		Expect:    expect,
 		HTTP:      muxHTTP,
 		OnFlash:   lan.ReceiveFlash,
@@ -190,7 +190,7 @@ func runCmd(args []string) error {
 		}
 		logger.Printf("web panel lit at http://%s", *panel)
 	}
-	if *panelToken != "" {
+	if *swarmToken != "" {
 		logger.Printf("panel and status answered on the gossip port %s, bearer token required", *bind)
 	}
 

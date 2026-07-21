@@ -29,13 +29,13 @@ while ss -lnt 2>/dev/null | grep -q ':7946 '; do
 done
 # Secrets never live in this script or the repo: each box keeps them in
 # mode-600 files the operator owns, and the run command carries neither
-# the -key nor the -panel-token flag. The panel token is optional; a box
+# the -swarm-secret nor the -swarm-token flag. The swarm token is optional; a box
 # without the file simply serves no panel door.
-PHOTINUS_KEY=$(cat "$HOME/.photinus.key")
-export PHOTINUS_KEY
-if [ -f "$HOME/.photinus.panel-token" ]; then
-  PHOTINUS_PANEL_TOKEN=$(cat "$HOME/.photinus.panel-token")
-  export PHOTINUS_PANEL_TOKEN
+PHOTINUS_SWARM_SECRET=$(cat "$HOME/.photinus.swarm-secret")
+export PHOTINUS_SWARM_SECRET
+if [ -f "$HOME/.photinus.swarm-token" ]; then
+  PHOTINUS_SWARM_TOKEN=$(cat "$HOME/.photinus.swarm-token")
+  export PHOTINUS_SWARM_TOKEN
 fi
 nohup sh -c "$CMD" >> /tmp/photinus.log 2>&1 &
 sleep 3

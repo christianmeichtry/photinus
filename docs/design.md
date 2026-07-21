@@ -606,3 +606,15 @@ threshold, clear only ten points below it (net uses 85 percent of its
 Mbit limit). A box riding its line says so once and stays warned, which
 is the truth, and says cleared once, when it genuinely recedes. Uptime
 is exempt: it clears by time passing, not by a value receding.
+
+
+## Rename: swarm secret and swarm token (0.0.20)
+
+The two secrets got clearer names and the old ones were dropped outright,
+no aliases, since the fleet is still small enough to break. The gossip
+secret is the swarm secret (-swarm-secret, $PHOTINUS_SWARM_SECRET,
+swarm_secret): symmetric, server only, whoever holds it is a member. The
+read credential is the swarm token (-swarm-token, $PHOTINUS_SWARM_TOKEN,
+swarm_token): it guards status reads and lives on phones and browsers.
+Secret and token, not key and panel-token: one is the thing you guard,
+the other the thing you hand out, and both belong to the swarm.

@@ -17,8 +17,8 @@ advertise: jawa.example.com
 
 # Shared swarm secret: gossip is encrypted and only lanterns holding the
 # same key can join. Use a long random passphrase and keep it out of
-# version control (set it here on the box, or via $PHOTINUS_KEY).
-key: "choose-a-long-random-passphrase"
+# version control (set it here on the box, or via $PHOTINUS_SWARM_SECRET).
+swarm_secret: "choose-a-long-random-passphrase"
 
 # Lanterns to join through. One is enough; more is safer.
 seeds:
@@ -63,7 +63,7 @@ notify_url: https://ntfy.sh/your-random-topic
 # Bearer token guarding status data. When set, the gossip port also
 # answers the panel and /status.json, so the app and a browser reach the
 # swarm through the one open port.
-panel_token: change-me
+swarm_token: change-me
 
 # Also serve the panel token-free on an extra address, for a reverse
 # proxy that authenticates, or loopback.

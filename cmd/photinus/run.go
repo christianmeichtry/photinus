@@ -45,6 +45,10 @@ func runCmd(args []string) error {
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments (combines with -notify-url)")
 	notifyURL := fs.String("notify-url", "", "url the elected lantern POSTs to when the swarm agrees something changed; the body is a sentence, ntfy-style headers carry title, priority, and tags, so for ntfy pass the topic url like https://ntfy.example.com/photinus (combines with -notify)")
 	notifyURLToken := fs.String("notify-url-token", os.Getenv("PHOTINUS_NOTIFY_TOKEN"), "bearer token sent with every -notify-url post (defaults to $PHOTINUS_NOTIFY_TOKEN, empty sends none)")
+	apnsKey := fs.String("apns-key", "", "path to the APNs .p8 signing key; with the other apns flags, the elected lantern pages registered phones directly through Apple (all four required together, key on every box)")
+	apnsKeyID := fs.String("apns-key-id", "", "key id of the APNs signing key")
+	apnsTeamID := fs.String("apns-team-id", "", "Apple developer team id")
+	apnsTopic := fs.String("apns-topic", "", "APNs topic, the app's bundle id")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
 	panel := fs.String("panel", "", "also serve the read-only web status panel on this extra address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
 	swarmToken := fs.String("swarm-token", os.Getenv("PHOTINUS_SWARM_TOKEN"), "bearer token guarding status reads; when set, the gossip port also answers the panel and /status.json, so the app and a browser reach the swarm through the one open port. Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_SWARM_TOKEN")
@@ -83,6 +87,7 @@ func runCmd(args []string) error {
 		set := make(map[string]bool)
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 		mergeConfig(fc, set, id, bind, advertise, swarmSecret, notifyCmd, notifyURL, notifyURLToken, socket, panel, swarmToken,
+			apnsKey, apnsKeyID, apnsTeamID, apnsTopic,
 			interval, skewMax, alertDelay, defaults, &seeds, &watches, &expect)
 	}
 
@@ -122,13 +127,41 @@ func runCmd(args []string) error {
 	}
 
 	// Delivery channels are independent: an exec'd command, a webhook post,
-	// or both. Election and damping do not care how the page travels.
+	// a push through Apple, any mix. Election and damping do not care how
+	// the page travels.
 	var senders []notify.Sender
 	if *notifyCmd != "" {
 		senders = append(senders, notify.Exec(*notifyCmd, logger))
 	}
 	if *notifyURL != "" {
 		senders = append(senders, notify.HTTPPoster(*notifyURL, *notifyURLToken, logger))
+	}
+	// The registration source is bound after the lantern exists; until
+	// then the sender sees no phones, and the tracker's warmup outlasts
+	// the gap anyway.
+	var pushSource func() []notify.PushRegistration
+	apnsSet := 0
+	for _, v := range []string{*apnsKey, *apnsKeyID, *apnsTeamID, *apnsTopic} {
+		if v != "" {
+			apnsSet++
+		}
+	}
+	if apnsSet > 0 && apnsSet < 4 {
+		return errors.New("APNs push needs all four of -apns-key, -apns-key-id, -apns-team-id, -apns-topic")
+	}
+	if apnsSet == 4 {
+		apns, err := notify.APNS(notify.APNSConfig{
+			KeyPath: *apnsKey, KeyID: *apnsKeyID, TeamID: *apnsTeamID, Topic: *apnsTopic,
+		}, func() []notify.PushRegistration {
+			if pushSource == nil {
+				return nil
+			}
+			return pushSource()
+		}, logger)
+		if err != nil {
+			return err
+		}
+		senders = append(senders, apns)
 	}
 	var tracker *notify.Tracker
 	if len(senders) > 0 {
@@ -146,6 +179,7 @@ func runCmd(args []string) error {
 		Notify:   tracker,
 		Logger:   logger,
 	})
+	pushSource = lan.PushRegistrations
 
 	// A token opens the panel on the gossip port itself, so the app and a
 	// browser reach the swarm through the one port every box already opens.

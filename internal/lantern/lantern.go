@@ -67,6 +67,7 @@ type Lantern struct {
 	pulseWarned map[string]bool
 	departed    map[string]time.Time
 	badVersions map[int]bool
+	pushRegs    map[string]notify.PushRegistration
 	sw          *swarm.Swarm
 }
 
@@ -103,6 +104,7 @@ func New(cfg Config) *Lantern {
 		pulseWarned: make(map[string]bool),
 		departed:    make(map[string]time.Time),
 		badVersions: make(map[int]bool),
+		pushRegs:    make(map[string]notify.PushRegistration),
 	}
 }
 
@@ -126,8 +128,12 @@ func (l *Lantern) SyncState() []byte {
 	for _, o := range l.store {
 		obs = append(obs, o)
 	}
+	regs := make([]notify.PushRegistration, 0, len(l.pushRegs))
+	for _, r := range l.pushRegs {
+		regs = append(regs, r)
+	}
 	l.mu.Unlock()
-	payload, err := json.Marshal(envelope{V: flashV, Obs: obs})
+	payload, err := json.Marshal(envelope{V: flashV, Obs: obs, Push: regs})
 	if err != nil {
 		return nil
 	}
@@ -240,6 +246,11 @@ func (l *Lantern) flash(ctx context.Context) {
 		for _, payload := range chunkFlash(own, 1000) {
 			sw.Flash(payload)
 		}
+		// Phone registrations ride their own small envelope, so a token a
+		// phone handed this lantern reaches the swarm within a flash.
+		if payload := l.pushPayload(); payload != nil {
+			sw.Flash(payload)
+		}
 	}
 
 	// With the flash out, look at what the swarm now agrees on and let the
@@ -323,6 +334,11 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 				l.log.Printf("dropping flashes with wire version %d, this lantern speaks %d: upgrade the older side", env.V, flashV)
 			}
 			return
+		}
+		if len(env.Push) > 0 {
+			l.mu.Lock()
+			l.mergePush(env.Push)
+			l.mu.Unlock()
 		}
 		obs = env.Obs
 	}
@@ -437,6 +453,7 @@ func (l *Lantern) prune(now time.Time) {
 			delete(l.lastPulse, name)
 		}
 	}
+	l.prunePush(now)
 }
 
 // SubjectStatus is the swarm's view of one check on one target.

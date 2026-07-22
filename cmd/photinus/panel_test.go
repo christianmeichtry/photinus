@@ -146,3 +146,69 @@ func TestServiceWorkerCarriesRelease(t *testing.T) {
 		t.Errorf("sw.js cache name does not carry release %s", version.Release)
 	}
 }
+
+func TestPushRegisterHandler(t *testing.T) {
+	const token = "s3cret"
+
+	post := func(lan *lantern.Lantern, auth, body string) *httptest.ResponseRecorder {
+		h := statusHandler(token, lan)
+		req := httptest.NewRequest("POST", "/push/register", strings.NewReader(body))
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("a good registration lands in the lantern", func(t *testing.T) {
+		lan := lantern.New(lantern.Config{ID: "l1"})
+		rec := post(lan, "Bearer s3cret", `{"token":"ab12cd34ef56ab12cd34","env":"sandbox"}`)
+		if rec.Code != 200 {
+			t.Fatalf("code = %d: %s", rec.Code, rec.Body.String())
+		}
+		regs := lan.PushRegistrations()
+		if len(regs) != 1 || regs[0].Token != "ab12cd34ef56ab12cd34" || regs[0].Env != "sandbox" {
+			t.Fatalf("registration not stored: %+v", regs)
+		}
+	})
+
+	t.Run("the door is guarded like the data", func(t *testing.T) {
+		lan := lantern.New(lantern.Config{ID: "l1"})
+		if rec := post(lan, "", `{"token":"ab12cd34ef56ab12cd34","env":"sandbox"}`); rec.Code != 401 {
+			t.Errorf("no bearer, code = %d", rec.Code)
+		}
+		if len(lan.PushRegistrations()) != 0 {
+			t.Error("an unauthorized registration was stored")
+		}
+	})
+
+	t.Run("garbage is refused", func(t *testing.T) {
+		lan := lantern.New(lantern.Config{ID: "l1"})
+		for name, body := range map[string]string{
+			"not json":        "hello",
+			"token not hex":   `{"token":"zz!!zz!!zz!!zz!!zz!!","env":"sandbox"}`,
+			"token too short": `{"token":"ab12","env":"sandbox"}`,
+			"unknown env":     `{"token":"ab12cd34ef56ab12cd34","env":"carrier-pigeon"}`,
+		} {
+			if rec := post(lan, "Bearer s3cret", body); rec.Code != 400 {
+				t.Errorf("%s: code = %d, want 400", name, rec.Code)
+			}
+		}
+		if len(lan.PushRegistrations()) != 0 {
+			t.Error("a refused registration was stored")
+		}
+	})
+
+	t.Run("GET is not a registration", func(t *testing.T) {
+		lan := lantern.New(lantern.Config{ID: "l1"})
+		h := statusHandler(token, lan)
+		req := httptest.NewRequest("GET", "/push/register", nil)
+		req.Header.Set("Authorization", "Bearer s3cret")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 405 {
+			t.Errorf("code = %d, want 405", rec.Code)
+		}
+	})
+}

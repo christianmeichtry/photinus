@@ -37,6 +37,10 @@ type fileConfig struct {
 	Notify         string   `yaml:"notify"`
 	NotifyURL      string   `yaml:"notify_url"`
 	NotifyURLToken string   `yaml:"notify_url_token"`
+	APNSKey        string   `yaml:"apns_key"`
+	APNSKeyID      string   `yaml:"apns_key_id"`
+	APNSTeamID     string   `yaml:"apns_team_id"`
+	APNSTopic      string   `yaml:"apns_topic"`
 	Socket         string   `yaml:"socket"`
 	Panel          string   `yaml:"panel"`
 	SwarmToken     string   `yaml:"swarm_token"`
@@ -104,6 +108,7 @@ func loadConfig(path string) (*fileConfig, error) {
 // fs.Visit) takes the file's word when the file says anything.
 func mergeConfig(fc *fileConfig, set map[string]bool,
 	id, bind, advertise, swarmSecret, notifyCmd, notifyURL, notifyURLToken, socket, panel, swarmToken *string,
+	apnsKey, apnsKeyID, apnsTeamID, apnsTopic *string,
 	interval, skewMax, alertDelay *time.Duration, defaults *bool,
 	seeds, watches, expect *stringList) {
 
@@ -119,6 +124,10 @@ func mergeConfig(fc *fileConfig, set map[string]bool,
 	str("notify", notifyCmd, fc.Notify)
 	str("notify-url", notifyURL, fc.NotifyURL)
 	str("notify-url-token", notifyURLToken, fc.NotifyURLToken)
+	str("apns-key", apnsKey, fc.APNSKey)
+	str("apns-key-id", apnsKeyID, fc.APNSKeyID)
+	str("apns-team-id", apnsTeamID, fc.APNSTeamID)
+	str("apns-topic", apnsTopic, fc.APNSTopic)
 	str("socket", socket, fc.Socket)
 	str("panel", panel, fc.Panel)
 	str("swarm-token", swarmToken, fc.SwarmToken)

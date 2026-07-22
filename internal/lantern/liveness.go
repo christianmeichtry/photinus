@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/christianmeichtry/photinus/internal/notify"
 	"github.com/christianmeichtry/photinus/internal/quorum"
 )
 
@@ -53,11 +54,14 @@ const flashV = 1
 
 // envelope is what actually rides the gossip packet. Leave, when set, is a
 // farewell: the named lantern is decommissioning itself and asks the swarm
-// to forget it. Additive since wire v1.
+// to forget it. Push carries phone registrations for the APNs pager, so
+// whichever lantern wins a notification election holds every token.
+// Additive since wire v1.
 type envelope struct {
-	V     int                  `json:"v"`
-	Obs   []quorum.Observation `json:"obs,omitempty"`
-	Leave string               `json:"leave,omitempty"`
+	V     int                       `json:"v"`
+	Obs   []quorum.Observation      `json:"obs,omitempty"`
+	Leave string                    `json:"leave,omitempty"`
+	Push  []notify.PushRegistration `json:"push,omitempty"`
 }
 
 // chunkFlash splits observations into payloads that each fit inside one UDP

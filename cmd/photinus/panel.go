@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -118,7 +119,66 @@ func statusHandler(token string, lan *lantern.Lantern) http.Handler {
 		fmt.Fprintf(w, "pulse %s recorded, not declared on this lantern\n", name)
 	})
 
+	// The push door: the app hands over its APNs device token here, at any
+	// lantern, and the registration gossips to every box, because the
+	// lantern elected to page is rarely the one the phone reached. Guarded
+	// like the data: a registration means pages, so it needs the token.
+	mux.HandleFunc("/push/register", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if token != "" && !bearerOK(r, token) {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "a bearer token is required", http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "register a push token with POST", http.StatusMethodNotAllowed)
+			return
+		}
+		var reg struct {
+			Token string `json:"token"`
+			Env   string `json:"env"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&reg); err != nil {
+			http.Error(w, "the body is JSON: {\"token\": hex, \"env\": \"sandbox\"|\"production\"}", http.StatusBadRequest)
+			return
+		}
+		if err := validPushToken(reg.Token); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if reg.Env != "sandbox" && reg.Env != "production" {
+			http.Error(w, "env is \"sandbox\" or \"production\"", http.StatusBadRequest)
+			return
+		}
+		lan.RegisterPush(reg.Token, reg.Env, time.Now().UTC())
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprintln(w, "push registration recorded")
+	})
+
 	return mux
+}
+
+// validPushToken gates what may claim to be an APNs device token: hex,
+// with generous length bounds because Apple documents the format as
+// opaque, small enough that a registration always fits a gossip packet.
+func validPushToken(token string) error {
+	if len(token) < 16 || len(token) > 200 {
+		return fmt.Errorf("a device token is 16 to 200 hex characters")
+	}
+	for _, r := range token {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return fmt.Errorf("a device token is hex; %q is not", token)
+		}
+	}
+	return nil
 }
 
 // bearerOK checks the Authorization header against the token in constant

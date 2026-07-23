@@ -15,8 +15,9 @@ still true if any single node disappears?** If the answer is no, it is wrong.
 Status: alpha, and say so anywhere the public might stumble on it. The mesh
 works end to end on a real fleet: lanterns gossip, agree, run all twelve check
 types including the pulse heartbeat, and the elected lantern pages exactly
-once. The YAML config file is in review; flags only until it lands. Feature
-freeze is on: finish and harden, do not open new surface.
+once. The YAML config file shipped (flags stay and win over it). 0.1.0 added
+APNs push: phones register at any door, registrations gossip, and the elected
+lantern pages through Apple with the same damping and delay as every channel.
 
 ## Vocabulary (use these words in code, comments, docs, CLI, and commit messages)
 
@@ -75,7 +76,7 @@ internal/lantern/    the agent loop: check, gossip, merge
 internal/swarm/      memberlist wrapper, peer state
 internal/check/      check implementations, one file per type
 internal/quorum/     agreement logic and alert decisions
-internal/notify/     outbound notification, hash-elected sender
+internal/notify/     outbound notification, hash-elected sender (exec, webhook, APNs push)
 ```
 
 The loop, in one breath: a lantern runs its local checks, probes a constant-size sample of
@@ -183,13 +184,30 @@ If you find yourself writing code that quietly sidesteps either of these, stop a
 
 ## Roadmap
 
-- **Mobile app (later).** A phone app will display swarm status and notify operators of
-  issues. It is a *read client*, not a new central host: it queries any lantern (rule 2,
-  answered from that lantern's local memory) and receives pushes through the existing
-  `notify` path. This means lanterns will eventually expose a small read-only status API
-  (HTTP/JSON) that any lantern can serve. It must never become a dashboard host or a
-  single point of failure. If the app design starts to require "the one server the app
-  talks to", that is wrong.
+- **Mobile app: shipped.** See "The companion app" below.
+
+## The companion app (sibling repo)
+
+The mobile app from the roadmap exists: `~/Dev/photinus-app`, SwiftUI, iOS.
+It is a read client plus the pulse beat and APNs push registration, true to
+rule 2: it queries any lantern from local memory and learns every other door
+from `endpoints`. It never became a dashboard host, and must not.
+
+Its contract with this repo; breaking any of these breaks the app:
+
+- `/status.json` shape and the panel's health derivation
+- `/pulse/<name>` and `/push/register` (`{"token": hex, "env": "sandbox"|"production"}`)
+- the detail sentences: the app parses `NN%`, `threshold is NN`,
+  `net is X in, Y out`, `up for X` / `rebooted X ago`, `pulsed at <RFC3339>`
+- notify Event kinds (append new kinds, never re-mean existing ones)
+- `panel.html` is the shared design language; when it gets redesigned, flag it
+  here so the app can mirror the change
+
+A separate Claude Code instance owns the app repo; the instance working here
+owns this repo and the fleet. Exchange runs through git and the CLAUDE.md
+files; operational fleet facts and cross-instance requests live in
+`CLAUDE.local.md` (untracked, "Handoff" section). Uncommitted changes in a
+repo mean the other instance keeps hands off.
 
 ## Conventions
 
@@ -212,16 +230,16 @@ gofmt -l .                    # must print nothing
 
 ## Current milestone
 
-The config file. One YAML file at the per-OS default path (see Stack),
-covering everything the flags do today: identity, bind/advertise, seeds, key,
-checks with thresholds, notify command, intervals. Flags stay and win over
-the file, so nothing breaks. The file is the deployment story: a systemd
-unit or launchd plist should say `photinus run` and nothing else.
+Open. Shipped since the last one: the YAML config file at the per-OS default
+paths (flags win over it), and 0.1.0's APNs push (registrations ride the
+flash envelope additively, wire v1 unchanged). Candidates for the next
+milestone live in docs/design.md and the issue tracker.
 
-Done so far: the mesh, all seven check types, the authority rule for local
-checks, skew from flash timestamps, remote swarms (-advertise, -key), and
-notification with hash election, verified to page exactly once including the
-takeover when the elected sender dies. The history is in docs/design.md.
+Done so far: the mesh, all twelve check types, the authority rule for local
+checks, skew from flash timestamps, remote swarms (-advertise, -key), the
+config file, APNs push, and notification with hash election, verified to
+page exactly once including the takeover when the elected sender dies. The
+history is in docs/design.md.
 
 ## Repo layout beyond the code
 

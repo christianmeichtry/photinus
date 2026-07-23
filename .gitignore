@@ -16,6 +16,14 @@ build/
 .env.*
 !.env.example
 
+# local operational facts shared between Claude Code instances, never public
+CLAUDE.local.md
+
+# staged deploy binaries
+/photinus.new
+/photinus.old-*
+/deploy-push/
+
 # os / editor
 .DS_Store
 Thumbs.db

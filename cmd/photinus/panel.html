@@ -397,23 +397,24 @@ function renderHero(){
     // data-name carries the FULL target so the click handler matches the card's
     // data-target; t is only the tidied label. (stripped != full broke http/cert dots)
     return `<span class="sq svc ${st}" data-name="${esc(x.target)}" data-label="${esc(x.type+" "+t+" · "+(st||"up"))}"></span>`;};
-  let v;
-  if(!downs&&!warns) v=`<span class="ok">all quiet</span>`;
-  else{const parts=[];
+  // no news is good news: the verdict is silent when nothing is wrong, and only
+  // ever names trouble. Nothing here advertises that things are fine.
+  let v="";
+  if(downs||warns){const parts=[];
     if(downs)parts.push(`<span class="vd">${downs} down</span>`);
     if(warns)parts.push(`<span class="vw">${warns} warning${warns===1?"":"s"}</span>`);
     v=parts.join(`<span class="sep"> · </span>`);}
   const unreach=known-lit;
   const litpart=unreach>0?`<span class="part">${lit}/${known} lit</span>`:`${lit}/${known} lit`;
-  const sk=drift?`<span class="part">${esc(skewInfo)}</span>`:`<span class="sk">${esc(skewInfo)}</span>`;
-  const health=`${litpart}<span class="sk"> · known ${known} · </span>${sk}`;
+  // skew, like the verdict, speaks only when it drifts; "in sync" says nothing.
+  const health=`${litpart}<span class="sk"> · known ${known}</span>`+(drift?`<span class="sk"> · </span><span class="part">${esc(skewInfo)}</span>`:"");
   // watched dots on the left; swarm dots live inside the verdict box, right above
   // all-quiet / lit / known, so the swarm summary and its health line read as one unit.
   const svcBlock=services.length?`<div class="matrix msvc">`+grouped(services).map(sdot).join("")+`</div>`:"";
   const hostBlock=hosts.length?`<div class="matrix mhosts">`+grouped(hosts).map(dot).join("")+`</div>`:"";
   $("hero").innerHTML=svcBlock+
     `<div class="hverdict">`+hostBlock+
-    `<div class="verdict">${v}</div>`+
+    (v?`<div class="verdict">${v}</div>`:"")+
     `<div class="swarmhealth">${health}</div></div>`;
   updateTab(downs,warns);
 }

@@ -195,7 +195,11 @@ from `endpoints`. It never became a dashboard host, and must not.
 
 Its contract with this repo; breaking any of these breaks the app:
 
-- `/status.json` shape and the panel's health derivation
+- `/status.json` shape and the panel's health derivation (including
+  `interval_ms`, added 0.1.3: the flash cadence, from which the heartbeat
+  flatline and per-lantern quiet thresholds are derived rather than
+  hardcoded, so both panel and app stay correct at any `-interval`; absent
+  means fall back to the 2s assumption)
 - `/pulse/<name>` and `/push/register` (`{"token": hex, "env": "sandbox"|"production"}`)
 - the detail sentences: the app parses `NN%`, `threshold is NN`,
   `net is X in, Y out`, `up for X` / `rebooted X ago`, `pulsed at <RFC3339>`

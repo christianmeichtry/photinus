@@ -394,7 +394,9 @@ function renderHero(){
   const dot=h=>{const st=h.worst==="up"?"":h.worst;
     return `<span class="sq ${st}" data-name="${esc(h.name)}" data-label="${esc(h.name+" · "+(st||"up"))}"></span>`;};
   const sdot=x=>{const st=x.s==="up"?"":x.s;const t=x.target.replace(/^https?:\/\//,"");
-    return `<span class="sq svc ${st}" data-name="${esc(t)}" data-label="${esc(x.type+" "+t+" · "+(st||"up"))}"></span>`;};
+    // data-name carries the FULL target so the click handler matches the card's
+    // data-target; t is only the tidied label. (stripped != full broke http/cert dots)
+    return `<span class="sq svc ${st}" data-name="${esc(x.target)}" data-label="${esc(x.type+" "+t+" · "+(st||"up"))}"></span>`;};
   let v;
   if(!downs&&!warns) v=`<span class="ok">all quiet</span>`;
   else{const parts=[];

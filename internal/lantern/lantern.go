@@ -473,6 +473,12 @@ type Status struct {
 	// so a single configured address is never a single point of failure.
 	Endpoints map[string]string `json:"endpoints,omitempty"`
 	Subjects  []SubjectStatus   `json:"subjects"`
+	// IntervalMS is this lantern's flash interval in milliseconds. Clients
+	// (panel, app) derive their heartbeat and staleness thresholds from it,
+	// so they stay correct at any -interval: a larger interval means flashes
+	// arrive less often, not that the swarm is unwell. Additive; a client
+	// that does not see it falls back to the historical 2s assumption.
+	IntervalMS int `json:"interval_ms,omitempty"`
 }
 
 // Status answers from local memory. It makes no network calls and must never
@@ -498,6 +504,7 @@ func (l *Lantern) Status() Status {
 		st.Endpoints = sw.MemberAddrs()
 	}
 	st.LastKnownSize = lastKnown
+	st.IntervalMS = int(l.interval / time.Millisecond)
 
 	subjects := make(map[string][2]string)
 	for _, o := range all {

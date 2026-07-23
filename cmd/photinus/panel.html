@@ -278,8 +278,19 @@ let curFlash = {g:0, h:{}};        // freshest seen (ms) in the latest payload
 let flashG = 0, flashGAt = 0;      // last time the global freshest advanced (value + browser ms)
 const flashH = {};                 // host.full -> {seen, at} of its last advance
 const hostMeta = {};               // square data-name (short) -> {full, worst}
-const FLASH_STALE_MS = 8000;       // global: no fresher flash this long -> flatline
-const QUIET_MS = 20000;            // per box: a door may hear a given peer only every few flashes
+// Thresholds are relative to the flash cadence, not fixed seconds: a slower
+// -interval means flashes simply arrive less often. The lantern reports its
+// interval (interval_ms); we scale off it (flatline = 4 missed flashes, quiet
+// = 10) with the historical 2s values as the floor, so a 2s swarm is
+// unchanged and a 5s swarm does not read as unwell. tuneCadence() is called
+// on every ingest; a box too old to report interval_ms keeps the 2s default.
+let FLASH_STALE_MS = 8000;         // global: no fresher flash this long -> flatline
+let QUIET_MS = 20000;              // per box: a door may hear a given peer only every few flashes
+function tuneCadence(intervalMs){
+  const iv = intervalMs > 0 ? intervalMs : 2000;
+  FLASH_STALE_MS = Math.max(8000, iv * 4);
+  QUIET_MS = Math.max(20000, iv * 10);
+}
 
 // reading the wire: a subject carries a state and a detail sentence, no raw
 // numbers, so the bar values and thresholds are parsed back out of the detail.
@@ -299,6 +310,7 @@ const grouped = arr => arr.slice().sort((a,b)=> rank[a.worst||a.s]-rank[b.worst|
 function ingest(st){
   st.subjects = st.subjects || [];
   const versions = st.versions || {};
+  tuneCadence(st.interval_ms);
   lit = (st.swarm||[]).length; known = st.last_known_size || lit;
 
   // a subject is a host's own business if it is the lantern liveness, the

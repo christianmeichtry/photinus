@@ -52,13 +52,13 @@
     font-family:var(--mono);font-size:.74rem;font-weight:700;letter-spacing:.02em;color:var(--ink);
     background:#08171b;border:1px solid var(--rule);border-radius:6px;padding:.28rem .5rem;
     white-space:nowrap;box-shadow:0 6px 16px rgba(0,0,0,.5)}
-  .mrow.hit,.svcchip.hit,.svccard.hit{animation:hit 3s ease}
-  @keyframes hit{0%{box-shadow:none}6%,80%{box-shadow:0 0 0 2px var(--warn),0 0 20px rgba(255,194,75,.45)}100%{box-shadow:none}}
+  .mrow.hit,.svcchip.hit,.svccard.hit{animation:hit 5s ease}
+  @keyframes hit{0%,90%{box-shadow:0 0 0 2px var(--warn),0 0 20px rgba(255,194,75,.45)}100%{box-shadow:none}}
 
-  .matrix{display:grid;grid-template-columns:repeat(auto-fill,1.5rem);gap:.32rem;align-content:start}
-  .matrix.mhosts{flex:1 1 22rem}
-  .matrix.msvc{flex:0 1 9rem}
-  .sq{position:relative;width:1.5rem;height:1.5rem;border-radius:5px;background:var(--up);cursor:pointer;
+  .matrix{display:flex;flex-wrap:wrap;gap:.32rem;align-content:start}
+  .matrix.mhosts{justify-content:flex-end;max-width:22rem}
+  .matrix.msvc{max-width:22rem}
+  .sq{position:relative;width:1.15rem;height:1.15rem;border-radius:4px;background:var(--up);cursor:pointer;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
   .sq:hover{transform:scale(1.18)}
   .sq.warn{background:var(--warn)}
@@ -89,7 +89,8 @@
   .dot.down::after{width:.42rem;height:.1rem;border-radius:2px}
   .dot.warn::after{width:.2rem;height:.2rem;border-radius:99px}
   .matsep{width:1px;align-self:stretch;background:var(--rule);margin:.1rem .5rem}
-  @media (prefers-reduced-motion:reduce){.sq.down{animation:none}.sq{transition:none}.mrow.hit,.svcchip.hit,.svccard.hit{animation:none}}
+  @media (prefers-reduced-motion:reduce){.sq.down{animation:none}.sq{transition:none}
+    .mrow.hit,.svcchip.hit,.svccard.hit{animation:none;box-shadow:0 0 0 2px var(--warn),0 0 20px rgba(255,194,75,.45)}}
 
   .hverdict{margin-left:auto;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:.3rem}
   .verdict{font-family:var(--mono);font-size:1.65rem;font-weight:900;letter-spacing:-.01em;
@@ -393,21 +394,27 @@ function renderHero(){
   const dot=h=>{const st=h.worst==="up"?"":h.worst;
     return `<span class="sq ${st}" data-name="${esc(h.name)}" data-label="${esc(h.name+" · "+(st||"up"))}"></span>`;};
   const sdot=x=>{const st=x.s==="up"?"":x.s;const t=x.target.replace(/^https?:\/\//,"");
-    return `<span class="sq svc ${st}" data-name="${esc(t)}" data-label="${esc(x.type+" "+t+" · "+(st||"up"))}"></span>`;};
-  let v;
-  if(!downs&&!warns) v=`<span class="ok">all quiet</span>`;
-  else{const parts=[];
+    // data-name carries the FULL target so the click handler matches the card's
+    // data-target; t is only the tidied label. (stripped != full broke http/cert dots)
+    return `<span class="sq svc ${st}" data-name="${esc(x.target)}" data-label="${esc(x.type+" "+t+" · "+(st||"up"))}"></span>`;};
+  // no news is good news: the verdict is silent when nothing is wrong, and only
+  // ever names trouble. Nothing here advertises that things are fine.
+  let v="";
+  if(downs||warns){const parts=[];
     if(downs)parts.push(`<span class="vd">${downs} down</span>`);
     if(warns)parts.push(`<span class="vw">${warns} warning${warns===1?"":"s"}</span>`);
     v=parts.join(`<span class="sep"> · </span>`);}
   const unreach=known-lit;
   const litpart=unreach>0?`<span class="part">${lit}/${known} lit</span>`:`${lit}/${known} lit`;
-  const sk=drift?`<span class="part">${esc(skewInfo)}</span>`:`<span class="sk">${esc(skewInfo)}</span>`;
-  const health=`${litpart}<span class="sk"> · known ${known} · </span>${sk}`;
-  $("hero").innerHTML=`<div class="matrix mhosts">`+
-    grouped(hosts).map(dot).join("")+`</div><span class="matsep"></span>`+
-    `<div class="matrix msvc">`+grouped(services).map(sdot).join("")+`</div>`+
-    `<div class="hverdict"><div class="verdict">${v}</div>`+
+  // skew, like the verdict, speaks only when it drifts; "in sync" says nothing.
+  const health=`${litpart}<span class="sk"> · known ${known}</span>`+(drift?`<span class="sk"> · </span><span class="part">${esc(skewInfo)}</span>`:"");
+  // watched dots on the left; swarm dots live inside the verdict box, right above
+  // all-quiet / lit / known, so the swarm summary and its health line read as one unit.
+  const svcBlock=services.length?`<div class="matrix msvc">`+grouped(services).map(sdot).join("")+`</div>`:"";
+  const hostBlock=hosts.length?`<div class="matrix mhosts">`+grouped(hosts).map(dot).join("")+`</div>`:"";
+  $("hero").innerHTML=svcBlock+
+    `<div class="hverdict">`+hostBlock+
+    (v?`<div class="verdict">${v}</div>`:"")+
     `<div class="swarmhealth">${health}</div></div>`;
   updateTab(downs,warns);
 }
@@ -580,7 +587,7 @@ function heartbeatTick(){
 }
 
 let firstPaint=true;
-function paint(){ renderHero(); renderMeters(!firstPaint); renderSvc(); firstPaint=false; }
+function paint(){ renderHero(); renderMeters(!firstPaint); renderSvc(); firstPaint=false; applyHit(); }
 function render(st){
   ingest(st);
   noteFlash();
@@ -625,18 +632,57 @@ heroEl.addEventListener("mouseover",e=>{const sq=e.target.closest(".sq");if(!sq)
   tip.style.left=(r.left+r.width/2)+"px"; tip.style.top=(r.top-6)+"px"; tip.style.display="block";});
 heroEl.addEventListener("mouseout",e=>{if(e.target.closest(".sq"))tip.style.display="none";});
 
+// eased scroll to a box: capture the destination up front so the 2s re-render
+// can't interrupt it, and offset for the sticky hero so nothing lands under it.
+const easeInOut = t => t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+function heroH(){ return $("hero").getBoundingClientRect().height; }
+function centerY(el){ const h=heroH(), r=el.getBoundingClientRect();
+  return scrollY + r.top - h - Math.max(12,(innerHeight-h-r.height)/2); }
+function topY(el){ return scrollY + el.getBoundingClientRect().top - heroH() - 12; }
+function smoothTo(y){
+  y=Math.max(0, Math.min(y, document.documentElement.scrollHeight-innerHeight));
+  const start=scrollY, dist=y-start;
+  if(Math.abs(dist)<2) return;
+  if(matchMedia("(prefers-reduced-motion:reduce)").matches){ scrollTo(0,y); return; }
+  const dur=Math.min(650, Math.max(280, Math.abs(dist)*.5));
+  let t0=null;
+  requestAnimationFrame(function step(ts){ if(t0==null)t0=ts;
+    const p=Math.min(1,(ts-t0)/dur);
+    scrollTo(0, start+dist*easeInOut(p));
+    if(p<1) requestAnimationFrame(step);
+  });
+}
+
+// the jumped-to box stays highlighted for its full window even though the 2s
+// tick rebuilds the row nodes: remember which box, re-apply .hit after each paint.
+let hilite=null;
+function hitNode(){
+  if(!hilite) return null;
+  return hilite.svc
+    ? document.querySelector(`.svcchip[data-target="${CSS.escape(hilite.key)}"], .svccard[data-target="${CSS.escape(hilite.key)}"]`)
+    : [...document.querySelectorAll(".mrow")].find(el=>el.dataset.host===hilite.key);
+}
+function applyHit(){
+  if(!hilite) return;
+  if(performance.now()>=hilite.until){ hilite=null; return; }
+  const el=hitNode(); if(el && !el.classList.contains("hit")) el.classList.add("hit");
+}
+
 // click the verdict count to filter to just those; click a square to jump
 heroEl.addEventListener("click",e=>{
   const vf=e.target.closest(".vd,.vw");
-  if(vf){ search.value=vf.classList.contains("vd")?"down":"warn"; applyFilter();
-    sections.scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  if(vf){ const term=vf.classList.contains("vd")?"down":"warn";
+    if(search.value===term){ clearFilter(false); }              // click the same count again to clear
+    else { search.value=term; applyFilter(); smoothTo(topY(sections)); }
+    return; }
   const sq=e.target.closest(".sq"); if(!sq)return;
   const name=sq.dataset.name;
   const sel=sq.classList.contains("svc")
     ? document.querySelector(`.svcchip[data-target="${CSS.escape(name)}"], .svccard[data-target="${CSS.escape(name)}"]`)
     : [...document.querySelectorAll(".mrow")].find(el=>el.dataset.host===name);
   if(!sel)return;
-  sel.scrollIntoView({behavior:"smooth",block:"center"});
+  hilite={key:name, svc:sq.classList.contains("svc"), until:performance.now()+5000};
+  smoothTo(centerY(sel));
   sel.classList.remove("hit"); void sel.offsetWidth; sel.classList.add("hit");
 });
 

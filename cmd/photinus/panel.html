@@ -65,6 +65,21 @@
   .sq.down{background:var(--down);animation:downpulse 1.6s ease-in-out infinite}
   .sq.stale{background:transparent;box-shadow:inset 0 0 0 1.5px var(--faint)}
   .sq.svc{border-radius:99px}
+  /* a lantern whose flash has aged out goes quiet (hollow, dimmed) before quorum
+     even calls it down; down/dark squares keep their red, they are past quiet */
+  .sq.quiet{background:transparent;box-shadow:inset 0 0 0 1.5px var(--faint);opacity:.5;animation:none}
+  .sq.quiet::after{display:none}
+  /* heartbeat: a firefly-green dot that blinks each time a fresher flash lands,
+     and flatlines to amber when the swarm (or the door) goes quiet */
+  .beat{display:inline-flex;align-items:center;gap:.45rem;font-family:var(--mono);font-size:.74rem;
+    color:var(--dim);white-space:nowrap}
+  .beat .bd{width:.5rem;height:.5rem;border-radius:99px;background:var(--up);flex:none}
+  .beat.blink .bd{animation:hb .8s ease}
+  .beat.stale{color:var(--warn)}
+  .beat.stale .bd{background:transparent;box-shadow:inset 0 0 0 1.5px var(--warn);animation:none}
+  @keyframes hb{0%{transform:scale(1);box-shadow:0 0 0 rgba(84,196,137,0)}
+    30%{transform:scale(1.6);box-shadow:0 0 10px rgba(84,196,137,.7)}100%{transform:scale(1);box-shadow:0 0 0 rgba(84,196,137,0)}}
+  @media (prefers-reduced-motion:reduce){.beat.blink .bd{animation:none}}
   @keyframes downpulse{0%,100%{box-shadow:0 0 8px rgba(232,93,66,.5)}50%{box-shadow:0 0 18px rgba(232,93,66,.95)}}
   /* colorblind insurance: state also has a SHAPE, not only a hue */
   .sq.down::after,.sq.warn::after,.dot.down::after,.dot.warn::after{content:"";position:absolute;
@@ -209,6 +224,7 @@
   <header>
     <span class="brand">photinus</span>
     <span class="who" id="who">…</span>
+    <span class="beat" id="beat" title="blinks when a fresher flash arrives; goes amber if the swarm stops flashing"><span class="bd"></span><span id="beatlbl">connecting…</span></span>
     <input class="search" id="search" type="search" placeholder="filter hosts, arch, state…   /" aria-label="filter">
     <button class="clearbtn" id="clearbtn" hidden>✕ clear</button>
     <button class="orderbtn" id="orderbtn" title="which section sits on top">⇅ <span id="orderlbl">services first</span></button>
@@ -254,6 +270,15 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 // ---- swarm state, rebuilt from /status.json on every tick ----
 let hosts = [], services = [], lit = 0, known = 0, drift = 0, skewInfo = "";
 let filterText = "";
+// heartbeat, driven by real flash timestamps (observation `seen`), compared
+// only against each other so clock skew between boxes cannot fool it; elapsed
+// time is measured on the browser clock.
+let curFlash = {g:0, h:{}};        // freshest seen (ms) in the latest payload
+let flashG = 0, flashGAt = 0;      // last time the global freshest advanced (value + browser ms)
+const flashH = {};                 // host.full -> {seen, at} of its last advance
+const hostMeta = {};               // square data-name (short) -> {full, worst}
+const FLASH_STALE_MS = 8000;       // global: no fresher flash this long -> flatline
+const QUIET_MS = 20000;            // per box: a door may hear a given peer only every few flashes
 
 // reading the wire: a subject carries a state and a detail sentence, no raw
 // numbers, so the bar values and thresholds are parsed back out of the detail.
@@ -333,6 +358,17 @@ function ingest(st){
   });
 
   skewInfo = drift ? `${drift} clock${drift>1?"s":""} drifting` : "clocks in sync";
+
+  // freshest flash overall and per observing lantern, from observation `seen`
+  let g = 0; const hm = {};
+  for (const s of st.subjects) for (const o of (s.observations || [])) {
+    const t = Date.parse(o.seen); if (!t) continue;
+    if (t > g) g = t;
+    if (t > (hm[o.observer] || 0)) hm[o.observer] = t;
+  }
+  curFlash = {g, h:hm};
+  for (const k in hostMeta) delete hostMeta[k];
+  for (const h of hosts) hostMeta[h.name] = {full:h.full, worst:h.worst};
 }
 
 function countUp(el,from,to,suf,dur){
@@ -510,14 +546,49 @@ function renderSvc(){
     :`<div class="empty">no service matches "${esc(filterText)}"</div>`;
 }
 
+// blink the beat when a fresher flash landed; note per-lantern advances too
+function noteFlash(){
+  const now = Date.now();
+  if (curFlash.g > flashG){ flashG = curFlash.g; flashGAt = now; blinkBeat(); }
+  for (const k in curFlash.h){
+    const t = curFlash.h[k], prev = flashH[k];
+    if (!prev || t > prev.seen) flashH[k] = {seen:t, at:now};
+  }
+}
+function blinkBeat(){
+  const b = $("beat"); if(!b) return;
+  b.classList.remove("blink"); void b.offsetWidth; b.classList.add("blink");
+}
+// runs on every fetch and on a 1s ticker: counts up the age and, if nothing
+// fresher arrives, flatlines the global beat and quiets the aged-out squares.
+function heartbeatTick(){
+  const now = Date.now(), b = $("beat"), lbl = $("beatlbl");
+  if (b && lbl){
+    if (!flashGAt){ b.classList.remove("stale"); lbl.textContent = "connecting…"; }
+    else {
+      const stale = (now - flashGAt) > FLASH_STALE_MS;
+      b.classList.toggle("stale", stale);
+      lbl.textContent = (stale ? "no flash · " : "flashed ") + Math.round((now - flashGAt)/1000) + "s ago";
+    }
+  }
+  document.querySelectorAll("#hero .sq:not(.svc)").forEach(sq => {
+    const m = hostMeta[sq.dataset.name]; if (!m) return;
+    const fh = flashH[m.full];
+    const quiet = m.worst !== "down" && fh && (now - fh.at) > QUIET_MS;
+    sq.classList.toggle("quiet", !!quiet);
+  });
+}
+
 let firstPaint=true;
 function paint(){ renderHero(); renderMeters(!firstPaint); renderSvc(); firstPaint=false; }
 function render(st){
   ingest(st);
+  noteFlash();
   $("who").innerHTML = `lantern <span class="pill name" title="${esc(st.id)}">${esc(st.id.split(".")[0].toUpperCase())}</span>`;
   $("served").textContent = "served by " + st.id.split(".")[0].toUpperCase();
   $("stamp").textContent = "refreshed " + new Date().toLocaleTimeString();
   paint();
+  heartbeatTick();
 }
 
 // ---- interactions, wired once ----
@@ -665,6 +736,7 @@ if ("serviceWorker" in navigator){
 }
 tick();
 setInterval(tick, 2000);
+setInterval(heartbeatTick, 1000);
 </script>
 </body>
 </html>

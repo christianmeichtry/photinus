@@ -174,12 +174,15 @@ func (l *Lantern) flash(ctx context.Context) {
 	fresh := make([]quorum.Observation, 0, len(l.checks))
 	for _, c := range l.checks {
 		// Only genuinely paced checks are gated; everything else runs on
-		// every flash, immune to ticker jitter.
+		// every flash, immune to ticker jitter. nominal is the check's own
+		// cadence; every may shrink to the re-probe interval while down.
 		every := l.interval
+		nominal := every
 		paced := false
 		var key string
 		if p, ok := c.(check.Paced); ok && p.Every() > every {
 			every = p.Every()
+			nominal = every
 			paced = true
 			key = c.Name() + "|" + c.Target()
 			// A check that last said down does not get to sulk for its whole
@@ -217,9 +220,14 @@ func (l *Lantern) flash(ctx context.Context) {
 		// hypervisor's whims) used to have its authority rows blank out
 		// fleet-wide as unknown; a short stall is not news, and the
 		// membership check still catches a box that actually died.
+		//
+		// The TTL follows the NOMINAL cadence, never the shrunk re-probe
+		// interval: the run that carries a down check back up is the last
+		// run for a whole cadence, and a short TTL on it left the subject
+		// voterless ("no fresh word") until the next scheduled probe.
 		ttl := int(3 * l.maxAge / time.Second)
-		if every > l.interval {
-			ttl = int(5 * every / time.Second)
+		if nominal > l.interval {
+			ttl = int(5 * nominal / time.Second)
 		}
 		fresh = append(fresh, quorum.Observation{
 			Observer: l.id,

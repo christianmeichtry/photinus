@@ -224,6 +224,27 @@ func TestDownChecksReprobeFast(t *testing.T) {
 			t.Errorf("an up check re-probed at the fast cadence: %d runs, want 2", c.runs)
 		}
 	})
+
+	t.Run("the recovery observation outlives the full cadence", func(t *testing.T) {
+		// The run that carries a down check back up is the last one for a
+		// whole cadence. Its TTL must cover the nominal pace, not the fast
+		// re-probe interval, or the subject sits voterless for the rest of
+		// the hour ("no fresh word").
+		c := &pacedFake{every: time.Hour, target: "site", verdict: check.Failed}
+		l := New(Config{ID: "l1", Interval: time.Second, Checks: []check.Check{c}})
+		l.flash(context.Background()) // down
+		key := "fake|site"
+		c.verdict = check.OK
+		l.lastRun[key] = l.lastRun[key].Add(-40 * time.Second)
+		l.flash(context.Background()) // recovery at the fast cadence
+		o, ok := l.store["l1|fake|site"]
+		if !ok {
+			t.Fatal("no stored observation after recovery")
+		}
+		if want := int(5 * time.Hour / time.Second); o.TTL != want {
+			t.Errorf("recovery TTL = %ds, want %ds (5x the nominal cadence)", o.TTL, want)
+		}
+	})
 }
 
 func TestSyncStateRoundTrip(t *testing.T) {

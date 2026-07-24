@@ -695,3 +695,37 @@ change its mind in thirty seconds, and re-probing it fast would only load
 the very host being watched. Thirty seconds is deliberate: fast enough for
 four fresh looks inside the default delay, slow enough not to hammer a
 server that is already struggling.
+
+## The push relay (0.1.6)
+
+The .p8 signing key is team-scoped: whoever holds it can push to every app
+under the team. That was tolerable while every box was the operator's own;
+it stopped being tolerable the day a client's production box joined the
+swarm, and it was never going to survive photinus going public, where
+strangers' lanterns must page phones without ever seeing a key.
+
+So: photinus-relay, a second binary from the same repo (cmd/relay). It is
+deliberately almost nothing. One endpoint, POST /relay, accepting exactly
+one shape: a single alert (token, env, title, body, an optional collapse id
+and kind) for a single device. The relay validates, signs with the key only
+it holds, forwards to Apple, and mirrors Apple's verdict back. GET /healthz
+says it is alive. There are no accounts, no storage, no state but an
+in-memory rate window; nothing to breach except the key it exists to guard,
+and abuse is answered with per-IP and per-token rate limits, a two-kilobyte
+request cap, and the refusal to forward anything that is not an alert.
+
+The lantern side is -push-relay url,url: the elected lantern walks the list
+and delivers through the first relay that answers, the same failover idiom
+as the app walking its doors. It is exclusive with the -apns flags, one box
+pages one way. The relay reuses the direct sender's signing and wire code
+(one seam, doPush), so there is exactly one implementation of talking to
+Apple. Registrations still ride the gossip; the relay never learns who is
+registered, it sees one token per push and forgets it.
+
+The relay runs on loopback behind each host box's existing reverse proxy,
+which owns TLS; two boxes on unrelated providers give the client-side
+failover something to fail over to. Deliberately out of scope for now:
+end-to-end payload encryption (phase 2, with the app's Notification Service
+Extension) and any relay-side identity. When photinus is public, the relay
+is what ships in the default config, and the -apns flags become the
+self-hosting option.

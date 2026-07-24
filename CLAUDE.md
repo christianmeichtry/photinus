@@ -72,11 +72,12 @@ beyond "put the binary somewhere and start it", push back and say so.
 
 ```
 cmd/photinus/        CLI entrypoint (lantern run, status, swarm, check)
+cmd/relay/           photinus-relay: signs and forwards pushes for lanterns without the APNs key
 internal/lantern/    the agent loop: check, gossip, merge
 internal/swarm/      memberlist wrapper, peer state
 internal/check/      check implementations, one file per type
 internal/quorum/     agreement logic and alert decisions
-internal/notify/     outbound notification, hash-elected sender (exec, webhook, APNs push)
+internal/notify/     outbound notification, hash-elected sender (exec, webhook, APNs push, relay)
 ```
 
 The loop, in one breath: a lantern runs its local checks, probes a constant-size sample of

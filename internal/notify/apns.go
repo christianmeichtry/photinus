@@ -74,6 +74,14 @@ type apnsSender struct {
 // source yields the current registrations at send time; it may be bound
 // late (the lantern is built after the tracker) and nil-safe.
 func APNS(cfg APNSConfig, source func() []PushRegistration, logger *log.Logger) (Sender, error) {
+	s, err := newAPNSSender(cfg, source, logger)
+	if err != nil {
+		return nil, err
+	}
+	return s.send, nil
+}
+
+func newAPNSSender(cfg APNSConfig, source func() []PushRegistration, logger *log.Logger) (*apnsSender, error) {
 	if logger == nil {
 		logger = log.New(io.Discard, "", 0)
 	}
@@ -106,7 +114,7 @@ func APNS(cfg APNSConfig, source func() []PushRegistration, logger *log.Logger) 
 		source: source,
 		log:    logger,
 	}
-	return s.send, nil
+	return s, nil
 }
 
 // send delivers one event to every registered phone. Like every Sender it
@@ -135,40 +143,76 @@ func (s *apnsSender) send(e Event) {
 }
 
 func (s *apnsSender) push(r PushRegistration, e Event, bearer string, body []byte) {
-	host, ok := s.hosts[r.Env]
-	if !ok {
-		s.log.Printf("push skipped a registration with unknown environment %q", r.Env)
-		return
-	}
-	req, err := http.NewRequest(http.MethodPost, host+"/3/device/"+r.Token, bytes.NewReader(body))
-	if err != nil {
-		s.log.Printf("push failed for %s %s on %s: %v", e.Kind, e.Check, e.Target, err)
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+bearer)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("apns-topic", s.topic)
-	req.Header.Set("apns-push-type", "alert")
-	req.Header.Set("apns-priority", apnsPriority(e.Kind))
-	req.Header.Set("apns-collapse-id", collapseID(e))
-	resp, err := s.client.Do(req)
-	if err != nil {
-		s.log.Printf("push failed for %s %s on %s: %v", e.Kind, e.Check, e.Target, err)
-		return
-	}
-	reason, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	resp.Body.Close()
+	status, reason, err := s.doPush(r.Env, r.Token, bearer, body, APNSPriority(e.Kind), collapseID(e))
 	switch {
-	case resp.StatusCode == http.StatusOK:
+	case err != nil:
+		s.log.Printf("push failed for %s %s on %s: %v", e.Kind, e.Check, e.Target, err)
+	case status == http.StatusOK:
 		s.log.Printf("pushed: %s, %s", e.Kind, e.Detail)
-	case resp.StatusCode == http.StatusGone:
+	case status == http.StatusGone:
 		// The phone uninstalled the app or its token rolled. The app
 		// re-registers with the fresh token on its next launch and this one
 		// ages out after PushTTL; nothing to do but say so.
 		s.log.Printf("push token …%s is gone (410); it ages out after %s unless the phone re-registers", tail(r.Token), PushTTL)
 	default:
-		s.log.Printf("push failed for %s %s on %s: APNs answered %s: %s", e.Kind, e.Check, e.Target, resp.Status, bytes.TrimSpace(reason))
+		s.log.Printf("push failed for %s %s on %s: APNs answered %d: %s", e.Kind, e.Check, e.Target, status, reason)
 	}
+}
+
+// doPush delivers one signed request to Apple and reports what Apple said.
+// It is the seam the relay shares: everything above it decides what a push
+// says, everything below is the same wire either way.
+func (s *apnsSender) doPush(env, deviceToken, bearer string, body []byte, priority, collapse string) (int, string, error) {
+	host, ok := s.hosts[env]
+	if !ok {
+		return 0, "", fmt.Errorf("unknown environment %q", env)
+	}
+	req, err := http.NewRequest(http.MethodPost, host+"/3/device/"+deviceToken, bytes.NewReader(body))
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("apns-topic", s.topic)
+	req.Header.Set("apns-push-type", "alert")
+	req.Header.Set("apns-priority", priority)
+	if collapse != "" {
+		req.Header.Set("apns-collapse-id", collapse)
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	reason, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	resp.Body.Close()
+	return resp.StatusCode, string(bytes.TrimSpace(reason)), nil
+}
+
+// APNSClient is the relay's handle on Apple: the same key parsing, token
+// signing, and push wire as the direct sender, minus any knowledge of
+// events. The relay decides nothing about alerts; it signs and forwards.
+type APNSClient struct {
+	s *apnsSender
+}
+
+// NewAPNSClient parses the key eagerly so a bad path fails at startup.
+func NewAPNSClient(cfg APNSConfig) (*APNSClient, error) {
+	s, err := newAPNSSender(cfg, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &APNSClient{s: s}, nil
+}
+
+// Push signs and forwards one alert to one device and reports Apple's
+// answer: the HTTP status, Apple's reason when there is one, or a transport
+// error. kind may be empty; it only sets the delivery priority.
+func (c *APNSClient) Push(env, deviceToken string, body []byte, kind, collapse string) (int, string, error) {
+	bearer, err := c.s.bearer(time.Now())
+	if err != nil {
+		return 0, "", fmt.Errorf("signing the provider token: %w", err)
+	}
+	return c.s.doPush(env, deviceToken, bearer, body, APNSPriority(kind), collapse)
 }
 
 // bearer returns the cached provider JWT, re-signing once it is fifty
@@ -217,22 +261,27 @@ func verifyJWT(token string, pub *ecdsa.PublicKey) bool {
 // payload is the notification itself: the kind and subject as the title,
 // the sentence as the body. Down interrupts; the way back is quieter.
 func payload(e Event) map[string]any {
+	return AlertPayload(e.Kind+": "+e.Check+" "+e.Target, e.Detail, e.Kind)
+}
+
+// AlertPayload is the one notification shape photinus ever pushes, shared
+// by the direct sender and the relay: an alert with a title and a body,
+// where only a down interrupts. The relay accepting nothing else is what
+// keeps it from being an arbitrary APNs passthrough.
+func AlertPayload(title, body, kind string) map[string]any {
 	aps := map[string]any{
-		"alert": map[string]string{
-			"title": e.Kind + ": " + e.Check + " " + e.Target,
-			"body":  e.Detail,
-		},
+		"alert": map[string]string{"title": title, "body": body},
 		"sound": "default",
 	}
-	if e.Kind == "down" {
+	if kind == "down" {
 		aps["interruption-level"] = "time-sensitive"
 	}
 	return map[string]any{"aps": aps}
 }
 
-// apnsPriority mirrors the ntfy ladder: a down is delivered immediately,
+// APNSPriority mirrors the ntfy ladder: a down is delivered immediately,
 // everything else may coalesce for battery.
-func apnsPriority(kind string) string {
+func APNSPriority(kind string) string {
 	if kind == "down" || kind == "flapping" {
 		return "10"
 	}

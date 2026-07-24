@@ -49,6 +49,7 @@ func runCmd(args []string) error {
 	apnsKeyID := fs.String("apns-key-id", "", "key id of the APNs signing key")
 	apnsTeamID := fs.String("apns-team-id", "", "Apple developer team id")
 	apnsTopic := fs.String("apns-topic", "", "APNs topic, the app's bundle id")
+	pushRelay := fs.String("push-relay", "", "comma-separated photinus-relay urls; the elected lantern pages phones through the first relay that answers, so this box never holds the APNs key (instead of the -apns flags, not with them)")
 	socket := fs.String("socket", "", "unix socket for local status queries (default: photinus-<id>.sock in the temp dir)")
 	panel := fs.String("panel", "", "also serve the read-only web status panel on this extra address (e.g. 127.0.0.1:8946); unauthenticated, put a reverse proxy with auth in front of anything public")
 	swarmToken := fs.String("swarm-token", os.Getenv("PHOTINUS_SWARM_TOKEN"), "bearer token guarding status reads; when set, the gossip port also answers the panel and /status.json, so the app and a browser reach the swarm through the one open port. Empty leaves the gossip port gossip-only. Defaults to $PHOTINUS_SWARM_TOKEN")
@@ -87,7 +88,7 @@ func runCmd(args []string) error {
 		set := make(map[string]bool)
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 		mergeConfig(fc, set, id, bind, advertise, swarmSecret, notifyCmd, notifyURL, notifyURLToken, socket, panel, swarmToken,
-			apnsKey, apnsKeyID, apnsTeamID, apnsTopic,
+			apnsKey, apnsKeyID, apnsTeamID, apnsTopic, pushRelay,
 			interval, skewMax, alertDelay, defaults, &seeds, &watches, &expect)
 	}
 
@@ -151,6 +152,29 @@ func runCmd(args []string) error {
 	}
 	if apnsSet > 0 && apnsSet < 4 {
 		return errors.New("APNs push needs all four of -apns-key, -apns-key-id, -apns-team-id, -apns-topic")
+	}
+	if *pushRelay != "" && apnsSet > 0 {
+		// One box, one way to page: holding the key AND relaying would send
+		// every phone the same push twice.
+		return errors.New("pick -push-relay or the -apns flags, not both")
+	}
+	if *pushRelay != "" {
+		var urls []string
+		for _, u := range strings.Split(*pushRelay, ",") {
+			if u = strings.TrimSpace(u); u != "" {
+				urls = append(urls, u)
+			}
+		}
+		if len(urls) == 0 {
+			return errors.New("-push-relay needs at least one url")
+		}
+		relay := notify.Relay(urls, func() []notify.PushRegistration {
+			if pushSource == nil {
+				return nil
+			}
+			return pushSource()
+		}, logger)
+		senders = append(senders, notify.PushOnly(relay))
 	}
 	if apnsSet == 4 {
 		apns, err := notify.APNS(notify.APNSConfig{

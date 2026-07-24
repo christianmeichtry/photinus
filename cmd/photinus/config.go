@@ -41,6 +41,7 @@ type fileConfig struct {
 	APNSKeyID      string   `yaml:"apns_key_id"`
 	APNSTeamID     string   `yaml:"apns_team_id"`
 	APNSTopic      string   `yaml:"apns_topic"`
+	PushRelay      string   `yaml:"push_relay"`
 	Socket         string   `yaml:"socket"`
 	Panel          string   `yaml:"panel"`
 	SwarmToken     string   `yaml:"swarm_token"`
@@ -108,7 +109,7 @@ func loadConfig(path string) (*fileConfig, error) {
 // fs.Visit) takes the file's word when the file says anything.
 func mergeConfig(fc *fileConfig, set map[string]bool,
 	id, bind, advertise, swarmSecret, notifyCmd, notifyURL, notifyURLToken, socket, panel, swarmToken *string,
-	apnsKey, apnsKeyID, apnsTeamID, apnsTopic *string,
+	apnsKey, apnsKeyID, apnsTeamID, apnsTopic, pushRelay *string,
 	interval, skewMax, alertDelay *time.Duration, defaults *bool,
 	seeds, watches, expect *stringList) {
 
@@ -128,6 +129,7 @@ func mergeConfig(fc *fileConfig, set map[string]bool,
 	str("apns-key-id", apnsKeyID, fc.APNSKeyID)
 	str("apns-team-id", apnsTeamID, fc.APNSTeamID)
 	str("apns-topic", apnsTopic, fc.APNSTopic)
+	str("push-relay", pushRelay, fc.PushRelay)
 	str("socket", socket, fc.Socket)
 	str("panel", panel, fc.Panel)
 	str("swarm-token", swarmToken, fc.SwarmToken)

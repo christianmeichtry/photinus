@@ -138,9 +138,10 @@ func TestReceiveFlashVersions(t *testing.T) {
 }
 
 type pacedFake struct {
-	runs   int
-	every  time.Duration
-	target string
+	runs    int
+	every   time.Duration
+	target  string
+	verdict check.Verdict
 }
 
 func (p *pacedFake) Name() string         { return "fake" }
@@ -148,7 +149,7 @@ func (p *pacedFake) Target() string       { return p.target }
 func (p *pacedFake) Every() time.Duration { return p.every }
 func (p *pacedFake) Run(ctx context.Context) check.Result {
 	p.runs++
-	return check.Result{Verdict: check.OK, Detail: "ran"}
+	return check.Result{Verdict: p.verdict, Detail: "ran"}
 }
 
 func TestPacedChecksRunOnTheirOwnCadence(t *testing.T) {
@@ -169,6 +170,60 @@ func TestPacedChecksRunOnTheirOwnCadence(t *testing.T) {
 	if o, ok := l.store[key]; !ok || o.TTL == 0 {
 		t.Errorf("paced observation missing or without TTL: %+v", o)
 	}
+}
+
+func TestDownChecksReprobeFast(t *testing.T) {
+	// The alert delay can only filter a blip if fresh evidence arrives
+	// inside its window; a down paced check must re-probe fast, not wait
+	// out its whole cadence.
+	tests := []struct {
+		name     string
+		verdict  check.Verdict
+		sinceRun time.Duration
+		reran    bool
+	}{
+		{"down re-probes after the recheck window", check.Failed, 40 * time.Second, true},
+		{"down holds inside the recheck window", check.Failed, 10 * time.Second, false},
+		{"up keeps the full cadence", check.OK, 40 * time.Second, false},
+		{"a warning keeps the full cadence too", check.Warn, 40 * time.Second, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &pacedFake{every: 5 * time.Minute, target: "site", verdict: tt.verdict}
+			l := New(Config{ID: "l1", Interval: time.Second, Checks: []check.Check{c}})
+			l.flash(context.Background())
+			if c.runs != 1 {
+				t.Fatalf("first flash ran the check %d times, want 1", c.runs)
+			}
+			// Rewind the clock the test cannot fake: pretend the last run
+			// happened sinceRun ago.
+			key := "fake|site"
+			l.lastRun[key] = l.lastRun[key].Add(-tt.sinceRun)
+			l.flash(context.Background())
+			if reran := c.runs == 2; reran != tt.reran {
+				t.Errorf("after %v with verdict %v: reran = %v, want %v",
+					tt.sinceRun, tt.verdict, reran, tt.reran)
+			}
+		})
+	}
+
+	t.Run("recovery returns the check to its cadence", func(t *testing.T) {
+		c := &pacedFake{every: 5 * time.Minute, target: "site", verdict: check.Failed}
+		l := New(Config{ID: "l1", Interval: time.Second, Checks: []check.Check{c}})
+		l.flash(context.Background()) // down
+		key := "fake|site"
+		c.verdict = check.OK
+		l.lastRun[key] = l.lastRun[key].Add(-40 * time.Second)
+		l.flash(context.Background()) // fast re-probe finds it up
+		if c.runs != 2 {
+			t.Fatalf("re-probe did not run: %d runs", c.runs)
+		}
+		l.lastRun[key] = l.lastRun[key].Add(-40 * time.Second)
+		l.flash(context.Background()) // 40s later again, but now up
+		if c.runs != 2 {
+			t.Errorf("an up check re-probed at the fast cadence: %d runs, want 2", c.runs)
+		}
+	})
 }
 
 func TestSyncStateRoundTrip(t *testing.T) {

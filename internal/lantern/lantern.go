@@ -67,6 +67,7 @@ type Lantern struct {
 	clocks      map[string]*peerClock
 	lastSeen    map[string]time.Time
 	lastRun     map[string]time.Time
+	lastVerdict map[string]check.Verdict
 	lastPulse   map[string]time.Time
 	pulseStuck  map[string]int
 	pulseWarned map[string]bool
@@ -105,6 +106,7 @@ func New(cfg Config) *Lantern {
 		clocks:      make(map[string]*peerClock),
 		lastSeen:    make(map[string]time.Time),
 		lastRun:     make(map[string]time.Time),
+		lastVerdict: make(map[string]check.Verdict),
 		lastPulse:   make(map[string]time.Time),
 		pulseStuck:  make(map[string]int),
 		pulseWarned: make(map[string]bool),
@@ -174,9 +176,21 @@ func (l *Lantern) flash(ctx context.Context) {
 		// Only genuinely paced checks are gated; everything else runs on
 		// every flash, immune to ticker jitter.
 		every := l.interval
+		paced := false
+		var key string
 		if p, ok := c.(check.Paced); ok && p.Every() > every {
 			every = p.Every()
-			key := c.Name() + "|" + c.Target()
+			paced = true
+			key = c.Name() + "|" + c.Target()
+			// A check that last said down does not get to sulk for its whole
+			// cadence: it re-probes fast until it says up again. The alert
+			// delay can only filter a blip if fresh evidence arrives inside
+			// its window, and a shared host's two-minute brownout must not
+			// read as down for five. Warnings keep their pace; a cert that
+			// expires in days will not change its mind in thirty seconds.
+			if l.lastVerdict[key] == check.Failed && every > recheckWhileDown {
+				every = recheckWhileDown
+			}
 			if last, ok := l.lastRun[key]; ok && now.Sub(last) < every {
 				continue
 			}
@@ -184,6 +198,9 @@ func (l *Lantern) flash(ctx context.Context) {
 		}
 
 		res := c.Run(ctx)
+		if paced {
+			l.lastVerdict[key] = res.Verdict
+		}
 		var state string
 		switch res.Verdict {
 		case check.OK:
@@ -549,3 +566,8 @@ func (l *Lantern) Status() Status {
 // flashObsLimit is what one observation may occupy inside a flash chunk,
 // leaving room for the envelope within chunkFlash's packet budget.
 const flashObsLimit = 900
+
+// recheckWhileDown is how fast a paced check re-probes after saying down.
+// Fast enough that a brownout clears inside the alert delay and never
+// pages; slow enough not to hammer a host that is already struggling.
+const recheckWhileDown = 30 * time.Second

@@ -669,3 +669,29 @@ are configured, counting the marked watches, or warning that none are.
 
 status.json carries `critical` per subject (additive) so the panel and the
 app can weight a critical outage differently on the ambient screen.
+
+## Down re-probes fast (0.1.5)
+
+The bake-off against UptimeRobot caught a class of false page the mesh was
+supposed to kill, and the cause was architectural, not vantage. photinus.dev
+lives on shared hosting that brownouts for a couple of minutes at a time:
+TLS still answers, the HTTP response takes longer than the check's timeout.
+Three lanterns' probe windows landed inside one brownout, quorum was real,
+and the operator got a down page and a recovered page for a site that was
+fine minutes later, three times in fifteen hours.
+
+The alert delay was built to eat exactly this: a subject back up before the
+delay expires never pages. But the delay can only filter a blip if fresh
+evidence arrives inside its window, and http paces at five minutes, so one
+timed-out probe stood unchallenged past the two-minute delay every time.
+The delay delayed; it filtered nothing.
+
+So a paced check that just said down re-probes every thirty seconds until
+it says up again. A brownout now clears well inside the delay and never
+pages, the panel shows reality within thirty seconds instead of five
+minutes, and recovery after a real outage shows fast too. Warnings keep
+their slow pace on purpose: a cert that expires in eight days will not
+change its mind in thirty seconds, and re-probing it fast would only load
+the very host being watched. Thirty seconds is deliberate: fast enough for
+four fresh looks inside the default delay, slow enough not to hammer a
+server that is already struggling.

@@ -39,7 +39,7 @@ func runCmd(args []string) error {
 	bind := fs.String("bind", "0.0.0.0:7946", "host:port the gossip layer listens on")
 	advertise := fs.String("advertise", "", "host[:port] peers should reach this lantern on, when that differs from -bind (NAT, several interfaces)")
 	swarmSecret := fs.String("swarm-secret", os.Getenv("PHOTINUS_SWARM_SECRET"), "shared swarm secret: encrypts gossip so only lanterns holding it can join (defaults to $PHOTINUS_SWARM_SECRET, empty runs open)")
-	interval := fs.Duration("interval", 2*time.Second, "time between flashes")
+	interval := fs.Duration("interval", 2*time.Second, "time between flashes; 2s suits a small fleet, raise it (e.g. 5s) on a large or small-hardware fleet to cut gossip and check load roughly in proportion. Reactivity barely changes: dead-lantern detection is memberlist's, separate from this, and the alert delay dominates the rest. The panel's own liveness thresholds scale off it, so set the same value on every box")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	alertDelay := fs.Duration("alert-delay", 2*time.Minute, "how long a subject must stay down before the first page; brief blips under this are logged but never paged, 0 pages the instant quorum agrees")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments (combines with -notify-url)")
@@ -503,6 +503,21 @@ func serveStatus(path string, lan *lantern.Lantern) (*http.Server, error) {
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(lan.Status())
+	})
+	// Retiring a subject is an operator action, so it lives here on the local
+	// socket, never on any network door: nobody off the box can erase a watch.
+	mux.HandleFunc("/forget", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		check, target := r.URL.Query().Get("check"), r.URL.Query().Get("target")
+		if check == "" || target == "" {
+			http.Error(w, "need check and target", http.StatusBadRequest)
+			return
+		}
+		lan.ForgetSubject(check, target)
+		fmt.Fprintf(w, "forgetting %s %s across the swarm\n", check, target)
 	})
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(ln)

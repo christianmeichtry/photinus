@@ -20,6 +20,8 @@ func main() {
 		err = runCmd(os.Args[2:])
 	case "status":
 		err = statusCmd(os.Args[2:])
+	case "forget":
+		err = forgetCmd(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("photinus " + version.Release)
 	case "help", "-h", "--help":
@@ -41,6 +43,7 @@ func usage() {
 Usage:
   photinus run      start a lantern on this host
   photinus status   ask the local lantern what the swarm sees
+  photinus forget   retire a subject across the swarm (a removed watch, a dead box)
   photinus version  print the release
 
 Run 'photinus <command> -h' for the flags of each command.

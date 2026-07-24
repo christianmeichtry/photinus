@@ -784,3 +784,49 @@ own once no lantern reports the subject any longer.
 The immediate lesson was operational, recorded with the fix: never join the
 real swarm with a throwaway id to test push; read the gossip without
 joining, or stand up a separate swarm on another port and key.
+
+## Retiring a subject: photinus forget (0.1.11)
+
+Removing a watch used to leave a ghost. Each lantern that watched a site
+gossips observations about it with a TTL long enough to ride between
+probes: five hours for a cert, paced hourly. Drop the watch on every box and
+no lantern generates the subject any more, but the last observations linger
+their whole TTL, re-shared by anti-entropy the entire time, so a retired
+cert watch shows up on the wall for five hours. The reaper (0.1.10) solved
+this for a dead lantern's own subject; a removed watch has no lantern to
+reap.
+
+So `photinus forget <check> <target>` retires a subject the way Farewell
+retires a lantern: the local lantern drops its observations, tombstones the
+subject so anti-entropy cannot hand it back, and broadcasts a forget
+envelope (additive wire field) so every peer does the same. The tombstone
+refuses any observation stamped before the forget and expires after
+seventy-two hours; a fresh observation, stamped after, means the operator
+re-added the watch, so it passes and clears the tombstone. Forgetting a
+subject a box still watches is therefore harmless: it reappears on the next
+probe, freshly stamped. The command rides the local unix socket, never a
+network door, because erasing a watch is the operator's business and no one
+else's. One command retires a curated-away watch or a decommissioned box
+without waiting out any TTL.
+
+## Tuning the flash interval for larger fleets
+
+`-interval` (default 2s) is the cadence a lantern flashes and runs its cheap
+local checks; a YAML `interval:` key sets the same. Total swarm gossip and
+per-lantern check load scale roughly as one over the interval, so a large
+fleet, or one on Pi-class hardware, can raise it to 5s and cut both by about
+two and a half times. What does not change: memberlist's own failure
+detection, which is how a dead lantern is noticed, runs on its own timers
+regardless; and the alert delay dominates time-to-page anyway, so a slower
+interval adds only a second or two there.
+
+Two things to know before turning the knob. Everything derived from the
+interval scales with it, and the one that matters for an always-on screen is
+the panel's liveness signal: the flatline and per-lantern quiet thresholds
+are four and ten flashes (`interval_ms` carries the cadence to the panel and
+app so they stay correct at any value), so at 5s a wedged door reads as
+stale in twenty seconds instead of eight. And it must be uniform: the panel
+derives its thresholds from whichever door it queried, so a fleet running a
+mix of intervals gives ambiguous staleness. Set the same value on every box,
+or leave it at 2s, which is right until the fleet is large enough that the
+gossip actually costs something.

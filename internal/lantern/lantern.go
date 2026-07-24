@@ -37,6 +37,10 @@ type Config struct {
 	// -expect and seeds, the same declarations belong on every box: only a
 	// lantern that declares a pulse evaluates its silence.
 	Pulses map[string]time.Duration
+	// Critical holds the subjects ("check target") the operator marked
+	// worth interrupting a day for. It only decorates status answers;
+	// enforcement lives in the notify senders.
+	Critical map[string]bool
 	// Notify, when set, is fed the swarm's decisions after every flash so
 	// the elected lantern can send the one notification. Nil means no
 	// notifications from this lantern.
@@ -53,6 +57,7 @@ type Lantern struct {
 	skewMax  time.Duration
 	checks   []check.Check
 	pulses   map[string]time.Duration
+	critical map[string]bool
 	start    time.Time
 	notify   *notify.Tracker
 	log      *log.Logger
@@ -92,6 +97,7 @@ func New(cfg Config) *Lantern {
 		skewMax:     cfg.SkewMax,
 		checks:      cfg.Checks,
 		pulses:      cfg.Pulses,
+		critical:    cfg.Critical,
 		start:       time.Now().UTC(),
 		notify:      cfg.Notify,
 		log:         logger,
@@ -460,6 +466,10 @@ func (l *Lantern) prune(now time.Time) {
 type SubjectStatus struct {
 	quorum.Decision
 	Observations []quorum.Observation `json:"observations"`
+	// Critical mirrors the operator's marking (and lantern liveness, which
+	// is always critical) so the panel and the app can weight it. Additive;
+	// absent means routine.
+	Critical bool `json:"critical,omitempty"`
 }
 
 // Status is everything one lantern knows, from local memory only.
@@ -513,7 +523,8 @@ func (l *Lantern) Status() Status {
 	for _, tc := range subjects {
 		target, checkName := tc[0], tc[1]
 		dec := quorum.Decide(target, checkName, all, lastKnown, l.maxAge, now)
-		ss := SubjectStatus{Decision: dec}
+		ss := SubjectStatus{Decision: dec,
+			Critical: l.critical[checkName+" "+target] || checkName == "lantern"}
 		for _, o := range all {
 			if o.Target == target && o.Check == checkName {
 				ss.Observations = append(ss.Observations, o)

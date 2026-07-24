@@ -627,3 +627,45 @@ read credential is the swarm token (-swarm-token, $PHOTINUS_SWARM_TOKEN,
 swarm_token): it guards status reads and lives on phones and browsers.
 Secret and token, not key and panel-token: one is the thing you guard,
 the other the thing you hand out, and both belong to the swarm.
+
+## Alert tiers and the critical mark (0.1.4)
+
+A step back settled what photinus is for its operator: an always-on ambient
+dashboard first, a desktop investigation tool second, a pager last. The panel
+on a screen you glance at all day IS the medium-urgency channel; a push has to
+be earned, because a push that can be ignored teaches the operator to ignore
+pushes. That collapses alerting into three tiers:
+
+- silence: blips shorter than the alert delay, and warnings on subjects
+  nobody marked. The panel still shows them live.
+- the panel: everything. Warnings live here on purpose, certs included: an
+  expiring cert warns for days on a screen the operator already looks at.
+- push: a critical subject that goes down, comes back, or starts flapping.
+  Nothing else. Warnings never push, no matter the subject.
+
+The operator marks a watch critical in the spec itself, CLI and YAML alike:
+`-watch critical:http:https://client.example`. The prefix survives the same
+string all the way from config to parser, so the YAML needs no second field.
+Lantern liveness is critical without marking: a lantern going dark means
+monitoring coverage is degraded, and that outranks whatever the box watched.
+Local resource checks and skew can only warn, so they never push at all; the
+box that pages you is the one whose lantern died, which the membership check
+already covers.
+
+Enforcement lives in the delivery layer, not the tracker. Election, damping,
+and the alert delay do not care how a page travels; two Sender wrappers do
+the policy work. Critical() stamps each event from the marked set, and
+PushOnly() wraps the phone-reaching channels (-notify-url, APNs), passing
+only critical down/recovered/flapping/settled. The exec command is a paper
+trail and hears everything, with "critical" or "routine" appended as a fifth
+argument, the contract growing at the end as it must. Criticality is config,
+not gossip: like seeds and -expect, the same markers belong on every box,
+because any lantern can win the election and it pages by its own config.
+
+The sharp edge to know: a fleet that pages today and rolls onto 0.1.4
+without adding critical: markers stops paging for watched services (lantern
+deaths still page). The startup log says so out loud whenever push channels
+are configured, counting the marked watches, or warning that none are.
+
+status.json carries `critical` per subject (additive) so the panel and the
+app can weight a critical outage differently on the ambient screen.

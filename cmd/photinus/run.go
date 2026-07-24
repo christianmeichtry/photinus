@@ -504,6 +504,21 @@ func serveStatus(path string, lan *lantern.Lantern) (*http.Server, error) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(lan.Status())
 	})
+	// Retiring a subject is an operator action, so it lives here on the local
+	// socket, never on any network door: nobody off the box can erase a watch.
+	mux.HandleFunc("/forget", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		check, target := r.URL.Query().Get("check"), r.URL.Query().Get("target")
+		if check == "" || target == "" {
+			http.Error(w, "need check and target", http.StatusBadRequest)
+			return
+		}
+		lan.ForgetSubject(check, target)
+		fmt.Fprintf(w, "forgetting %s %s across the swarm\n", check, target)
+	})
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(ln)
 	return srv, nil

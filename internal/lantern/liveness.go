@@ -58,10 +58,16 @@ const flashV = 1
 // whichever lantern wins a notification election holds every token.
 // Additive since wire v1.
 type envelope struct {
-	V     int                       `json:"v"`
-	Obs   []quorum.Observation      `json:"obs,omitempty"`
-	Leave string                    `json:"leave,omitempty"`
-	Push  []notify.PushRegistration `json:"push,omitempty"`
+	V   int                  `json:"v"`
+	Obs []quorum.Observation `json:"obs,omitempty"`
+	// Leave names a lantern decommissioning itself. Forget names a single
+	// subject ("check target") the operator retired: a removed watch or a
+	// dead node whose stale observations would otherwise linger for their
+	// whole TTL. Both ask the swarm to drop what they name and refuse its
+	// resurrection by anti-entropy. Additive since wire v1.
+	Leave  string                    `json:"leave,omitempty"`
+	Forget string                    `json:"forget,omitempty"`
+	Push   []notify.PushRegistration `json:"push,omitempty"`
 }
 
 // chunkFlash splits observations into payloads that each fit inside one UDP

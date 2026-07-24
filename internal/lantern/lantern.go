@@ -72,6 +72,7 @@ type Lantern struct {
 	pulseStuck  map[string]int
 	pulseWarned map[string]bool
 	departed    map[string]time.Time
+	forgotten   map[string]time.Time // subject -> when the operator retired it
 	badVersions map[int]bool
 	pushRegs    map[string]notify.PushRegistration
 	sw          *swarm.Swarm
@@ -111,6 +112,7 @@ func New(cfg Config) *Lantern {
 		pulseStuck:  make(map[string]int),
 		pulseWarned: make(map[string]bool),
 		departed:    make(map[string]time.Time),
+		forgotten:   make(map[string]time.Time),
 		badVersions: make(map[int]bool),
 		pushRegs:    make(map[string]notify.PushRegistration),
 	}
@@ -356,6 +358,10 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 			l.forget(env.Leave)
 			return
 		}
+		if env.Forget != "" {
+			l.forgetSubject(env.Forget)
+			return
+		}
 		if env.V != flashV {
 			l.mu.Lock()
 			seen := l.badVersions[env.V]
@@ -397,6 +403,16 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 		if dep, ok := l.departed[o.Target]; ok && !o.Seen.After(dep) && !pulseReceipt {
 			continue
 		}
+		// A retired subject stays gone: refuse the stale observations that a
+		// peer which missed the forget keeps re-sharing. A fresh one, stamped
+		// after the forget, means the operator re-added the watch, so it
+		// passes and clears the tombstone.
+		if fg, ok := l.forgotten[o.Check+" "+o.Target]; ok {
+			if !o.Seen.After(fg) {
+				continue
+			}
+			delete(l.forgotten, o.Check+" "+o.Target)
+		}
 		key := storeKey(o)
 		if prev, ok := l.store[key]; !ok || o.Seen.After(prev.Seen) {
 			l.store[key] = o
@@ -418,6 +434,38 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 
 func storeKey(o quorum.Observation) string {
 	return o.Observer + "|" + o.Check + "|" + o.Target
+}
+
+// ForgetSubject retires one subject ("check target") across the swarm: it
+// drops the local observations, tombstones the subject so anti-entropy
+// cannot re-add them, and broadcasts the same so every lantern does the
+// same. It is how an operator removes a watch or a decommissioned box
+// without waiting out the observation's whole TTL. If a box still watches
+// the subject it will simply reappear on the next flash, freshly stamped;
+// forget is for what nobody watches any more.
+func (l *Lantern) ForgetSubject(check, target string) {
+	l.forgetSubject(check + " " + target)
+	l.mu.Lock()
+	sw := l.sw
+	l.mu.Unlock()
+	if sw == nil {
+		return
+	}
+	if payload, err := json.Marshal(envelope{V: flashV, Forget: check + " " + target}); err == nil {
+		sw.Flash(payload)
+	}
+}
+
+// forgetSubject drops every observation about one subject and tombstones it.
+func (l *Lantern) forgetSubject(subject string) {
+	l.mu.Lock()
+	for k, o := range l.store {
+		if o.Check+" "+o.Target == subject {
+			delete(l.store, k)
+		}
+	}
+	l.forgotten[subject] = time.Now().UTC()
+	l.mu.Unlock()
 }
 
 // Farewell tells the swarm this lantern is leaving on purpose, then gives
@@ -489,6 +537,11 @@ func (l *Lantern) prune(now time.Time) {
 	for name, dep := range l.departed {
 		if now.Sub(dep) > 72*time.Hour {
 			delete(l.departed, name)
+		}
+	}
+	for subject, at := range l.forgotten {
+		if now.Sub(at) > 72*time.Hour {
+			delete(l.forgotten, subject)
 		}
 	}
 	// Pings for names nobody declares (typos, jobs pinging before their

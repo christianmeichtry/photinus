@@ -449,3 +449,64 @@ func TestPulseReceiptsSurviveDeparture(t *testing.T) {
 		}
 	})
 }
+
+func TestForgetSubject(t *testing.T) {
+	now := time.Now().UTC()
+	aslecCert := quorum.Observation{Observer: "jawa", Target: "aslec.ch:443", Check: "cert",
+		State: quorum.StateUp, Detail: "valid, 60 days left", Seen: now, TTL: 18000}
+	otherSite := quorum.Observation{Observer: "jawa", Target: "keep.ch:443", Check: "cert",
+		State: quorum.StateUp, Seen: now, TTL: 18000}
+
+	t.Run("forgetSubject drops the subject's observations, keeps others", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		l.store[storeKey(aslecCert)] = aslecCert
+		l.store[storeKey(otherSite)] = otherSite
+		l.forgetSubject("cert aslec.ch:443")
+		if _, ok := l.store[storeKey(aslecCert)]; ok {
+			t.Error("the forgotten subject's observation survived")
+		}
+		if _, ok := l.store[storeKey(otherSite)]; !ok {
+			t.Error("an unrelated subject was dropped")
+		}
+		if _, ok := l.forgotten["cert aslec.ch:443"]; !ok {
+			t.Error("no tombstone recorded")
+		}
+	})
+
+	t.Run("the tombstone refuses stale re-shared observations", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		l.forgetSubject("cert aslec.ch:443") // tombstone stamped now
+		stale := aslecCert
+		stale.Seen = now.Add(-time.Minute) // a peer that missed the forget re-shares its old copy
+		payload, _ := json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{stale}})
+		l.ReceiveFlash(payload)
+		if _, ok := l.store[storeKey(stale)]; ok {
+			t.Error("anti-entropy resurrected a forgotten subject")
+		}
+	})
+
+	t.Run("a fresh observation re-adds the subject and clears the tombstone", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		l.forgetSubject("cert aslec.ch:443")
+		fresh := aslecCert
+		fresh.Seen = time.Now().UTC().Add(time.Minute) // operator re-added the watch
+		payload, _ := json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{fresh}})
+		l.ReceiveFlash(payload)
+		if _, ok := l.store[storeKey(fresh)]; !ok {
+			t.Error("a re-watched subject stayed suppressed")
+		}
+		if _, ok := l.forgotten["cert aslec.ch:443"]; ok {
+			t.Error("the tombstone lingered after the subject came back")
+		}
+	})
+
+	t.Run("a forget envelope forgets the subject on the receiver", func(t *testing.T) {
+		l := New(Config{ID: "l2"})
+		l.store[storeKey(aslecCert)] = aslecCert
+		payload, _ := json.Marshal(envelope{V: flashV, Forget: "cert aslec.ch:443"})
+		l.ReceiveFlash(payload)
+		if _, ok := l.store[storeKey(aslecCert)]; ok {
+			t.Error("a broadcast forget did not drop the observation")
+		}
+	})
+}

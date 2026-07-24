@@ -60,7 +60,7 @@ func TestParseWatchesPulse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			checks, pulses, err := parseWatches("l1", []string{tt.watch})
+			checks, pulses, _, err := parseWatches("l1", []string{tt.watch})
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("parseWatches(%q) accepted, want an error", tt.watch)
@@ -93,12 +93,69 @@ func TestPulseNameBounds(t *testing.T) {
 		"pulse:l1", // the lantern's own name, rule 4 collision
 	}
 	for _, w := range bad {
-		if _, _, err := parseWatches("l1", []string{w}); err == nil {
+		if _, _, _, err := parseWatches("l1", []string{w}); err == nil {
 			t.Errorf("parseWatches accepted %q", w)
 		}
 	}
-	if _, _, err := parseWatches("l1", []string{"pulse:backup-db.daily_v2:30m"}); err != nil {
+	if _, _, _, err := parseWatches("l1", []string{"pulse:backup-db.daily_v2:30m"}); err != nil {
 		t.Errorf("a reasonable name was refused: %v", err)
+	}
+}
+
+func TestParseWatchesCritical(t *testing.T) {
+	tests := []struct {
+		name    string
+		watches []string
+		want    []string // subject keys that must be critical
+		notWant []string // subject keys that must not be
+	}{
+		{
+			name:    "critical http keys the normalized url",
+			watches: []string{"critical:http:https://client.example"},
+			want:    []string{"http https://client.example"},
+		},
+		{
+			name:    "critical on a bare host gets the scheme the check adds",
+			watches: []string{"critical:http:client.example"},
+			want:    []string{"http https://client.example"},
+		},
+		{
+			name:    "critical cert keys the defaulted port",
+			watches: []string{"critical:cert:client.example"},
+			want:    []string{"cert client.example:443"},
+		},
+		{
+			name:    "critical pulse keys the pulse name",
+			watches: []string{"critical:pulse:backup-db:26h"},
+			want:    []string{"pulse backup-db"},
+		},
+		{
+			name:    "unmarked watches stay routine",
+			watches: []string{"critical:tcp:db.example:5432", "http:https://blog.example"},
+			want:    []string{"tcp db.example:5432"},
+			notWant: []string{"http https://blog.example"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, critical, err := parseWatches("l1", tt.watches)
+			if err != nil {
+				t.Fatalf("parseWatches(%v): %v", tt.watches, err)
+			}
+			for _, k := range tt.want {
+				if !critical[k] {
+					t.Errorf("subject %q not critical, set is %v", k, critical)
+				}
+			}
+			for _, k := range tt.notWant {
+				if critical[k] {
+					t.Errorf("subject %q critical, want routine", k)
+				}
+			}
+		})
+	}
+	if _, _, _, err := parseWatches("l1", []string{"critical:"}); err == nil {
+		t.Error("a bare critical: prefix with no check was accepted")
 	}
 }
 

@@ -26,11 +26,45 @@ type Event struct {
 	Target string
 	// Detail is a plain sentence for a human.
 	Detail string
+	// Critical marks a subject the operator declared worth interrupting a
+	// day for. Only critical subjects reach push channels; everything else
+	// is for the panel and the paper trail.
+	Critical bool
 }
 
 // Sender delivers one event to the operator. It must not block; a slow
 // transport should do its waiting in a goroutine.
 type Sender func(Event)
+
+// Critical returns a Sender that stamps each event's Critical flag before
+// handing it on. A subject is critical when the operator marked its watch
+// critical, or when it is the mesh watching itself: a lantern going dark
+// means monitoring coverage is degraded, and that always outranks whatever
+// the dead box was watching. The set keys on "check target", the same
+// subject key quorum uses.
+func Critical(subjects map[string]bool, next Sender) Sender {
+	return func(e Event) {
+		e.Critical = subjects[e.Check+" "+e.Target] || e.Check == "lantern"
+		next(e)
+	}
+}
+
+// PushOnly returns a Sender that forwards only what has earned an
+// interruption: a critical subject that is down, back up, or being damped.
+// Warnings and cleared never push, no matter the subject; the always-on
+// panel is their channel, and a push that can be ignored teaches the
+// operator to ignore pushes. Non-critical subjects never push at all.
+func PushOnly(next Sender) Sender {
+	return func(e Event) {
+		if !e.Critical {
+			return
+		}
+		switch e.Kind {
+		case "down", "recovered", "flapping", "settled":
+			next(e)
+		}
+	}
+}
 
 // Elect picks the lantern that sends the notification for one alert, by
 // rendezvous hashing: every alive lantern gets a score from hashing its ID

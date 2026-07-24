@@ -142,8 +142,12 @@ previous release. The rules:
   monitoring conclusions are worse than missing ones.
 - Every lantern announces its release in memberlist node metadata;
   `status` shows versions whenever the swarm is mixed.
-- The notify command's arguments (`kind check target sentence`) are a
-  public contract: append new arguments at the end, never reorder.
+- The notify command's arguments (`kind check target sentence critical`)
+  are a public contract: append new arguments at the end, never reorder.
+  The fifth ("critical" or "routine") arrived in 0.1.4 with alert tiers:
+  only subjects marked `-watch critical:...` (plus lantern liveness, always
+  critical) reach push channels, and warnings never push. The exec command
+  hears everything.
 
 ## Rules that are not negotiable
 
@@ -199,7 +203,8 @@ Its contract with this repo; breaking any of these breaks the app:
   `interval_ms`, added 0.1.3: the flash cadence, from which the heartbeat
   flatline and per-lantern quiet thresholds are derived rather than
   hardcoded, so both panel and app stay correct at any `-interval`; absent
-  means fall back to the 2s assumption)
+  means fall back to the 2s assumption; and `critical` per subject, added
+  0.1.4: the operator marked this watch page-worthy, absent means routine)
 - `/pulse/<name>` and `/push/register` (`{"token": hex, "env": "sandbox"|"production"}`)
 - the detail sentences: the app parses `NN%`, `threshold is NN`,
   `net is X in, Y out`, `up for X` / `rebooted X ago`, `pulsed at <RFC3339>`

@@ -399,3 +399,57 @@ func TestDownHoldDown(t *testing.T) {
 		}
 	})
 }
+
+func TestCriticalStamping(t *testing.T) {
+	set := map[string]bool{"http https://client.example": true}
+	var got []Event
+	s := Critical(set, func(e Event) { got = append(got, e) })
+
+	tests := []struct {
+		name string
+		ev   Event
+		want bool
+	}{
+		{"a marked watch is critical", Event{Kind: "down", Check: "http", Target: "https://client.example"}, true},
+		{"an unmarked watch is routine", Event{Kind: "down", Check: "http", Target: "https://blog.example"}, false},
+		{"lantern liveness is always critical", Event{Kind: "down", Check: "lantern", Target: "ewok"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got = nil
+			s(tt.ev)
+			if len(got) != 1 {
+				t.Fatalf("stamping must forward every event, got %d", len(got))
+			}
+			if got[0].Critical != tt.want {
+				t.Errorf("Critical = %v, want %v", got[0].Critical, tt.want)
+			}
+		})
+	}
+}
+
+func TestPushOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		ev   Event
+		sent bool
+	}{
+		{"critical down pushes", Event{Kind: "down", Critical: true}, true},
+		{"critical recovered pushes", Event{Kind: "recovered", Critical: true}, true},
+		{"critical flapping pushes", Event{Kind: "flapping", Critical: true}, true},
+		{"critical settled pushes", Event{Kind: "settled", Critical: true}, true},
+		{"a warning never pushes, even critical", Event{Kind: "warning", Critical: true}, false},
+		{"cleared never pushes", Event{Kind: "cleared", Critical: true}, false},
+		{"a routine down stays off the phone", Event{Kind: "down", Critical: false}, false},
+		{"a routine recovered stays off the phone", Event{Kind: "recovered", Critical: false}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []Event
+			PushOnly(func(e Event) { got = append(got, e) })(tt.ev)
+			if sent := len(got) == 1; sent != tt.sent {
+				t.Errorf("sent = %v, want %v", sent, tt.sent)
+			}
+		})
+	}
+}

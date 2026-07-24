@@ -56,7 +56,7 @@ func runCmd(args []string) error {
 	var seeds, watches, expect stringList
 	fs.Var(&seeds, "seed", "address of a lantern to join through (repeatable)")
 	fs.Var(&expect, "expect", "name of a lantern that must exist; a declared box that is down or never joins is reported down instead of vanishing (repeatable, same list on every box)")
-	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration], net[:mbit], pulse:name[:window] (a heartbeat / dead man's switch); naming a default check overrides it")
+	fs.Var(&watches, "watch", "an extra check to run (repeatable): tcp:host:port, http:url, cert:host[:port[:days]], disk:/path[:percent], cpu[:percent], memory[:percent], swap[:percent], uptime[:duration], net[:mbit], pulse:name[:window] (a heartbeat / dead man's switch); naming a default check overrides it. A critical: prefix (critical:http:url) marks the watch as page-worthy: only critical subjects and lantern liveness reach push channels, everything else stays on the panel")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -99,14 +99,14 @@ func runCmd(args []string) error {
 		sockPath = defaultSocket(*id)
 	}
 
-	checks, pulses, err := parseWatches(*id, watches)
+	checks, pulses, critical, err := parseWatches(*id, watches)
 	if err != nil {
 		return err
 	}
 	if *defaults {
 		// The named checks came first, so a -watch that names a default
 		// subject (say disk:/ with its own threshold) wins over it.
-		std, _, err := parseWatches(*id, []string{"disk:/", "cpu", "memory", "swap", "uptime", "net"})
+		std, _, _, err := parseWatches(*id, []string{"disk:/", "cpu", "memory", "swap", "uptime", "net"})
 		if err != nil {
 			return err
 		}
@@ -128,13 +128,16 @@ func runCmd(args []string) error {
 
 	// Delivery channels are independent: an exec'd command, a webhook post,
 	// a push through Apple, any mix. Election and damping do not care how
-	// the page travels.
+	// the page travels, but the channels differ in weight: the exec command
+	// is a paper trail and hears everything, while the url and APNs reach a
+	// phone, and an interruption must be earned. Only critical subjects
+	// that go down, come back, or get damped ride the push channels.
 	var senders []notify.Sender
 	if *notifyCmd != "" {
 		senders = append(senders, notify.Exec(*notifyCmd, logger))
 	}
 	if *notifyURL != "" {
-		senders = append(senders, notify.HTTPPoster(*notifyURL, *notifyURLToken, logger))
+		senders = append(senders, notify.PushOnly(notify.HTTPPoster(*notifyURL, *notifyURLToken, logger)))
 	}
 	// The registration source is bound after the lantern exists; until
 	// then the sender sees no phones, and the tracker's warmup outlasts
@@ -161,13 +164,20 @@ func runCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		senders = append(senders, apns)
+		senders = append(senders, notify.PushOnly(apns))
 	}
 	var tracker *notify.Tracker
 	if len(senders) > 0 {
 		// The warmup matches the observation aging window: by then the
 		// swarm has formed and a lantern is no longer a quorum of one.
-		tracker = notify.New(*id, 5*(*interval), *alertDelay, fanOut(senders), logger)
+		tracker = notify.New(*id, 5*(*interval), *alertDelay, notify.Critical(critical, fanOut(senders)), logger)
+		if *notifyURL != "" || apnsSet == 4 {
+			if len(critical) == 0 {
+				logger.Printf("no watch is marked critical: only a lantern going dark will page, everything else stays on the panel (mark one with -watch critical:http:...)")
+			} else {
+				logger.Printf("%d of %d watches marked critical; critical subjects and lantern liveness page, the rest stays on the panel", len(critical), len(watches))
+			}
+		}
 	}
 
 	lan := lantern.New(lantern.Config{
@@ -176,6 +186,7 @@ func runCmd(args []string) error {
 		SkewMax:  *skewMax,
 		Checks:   checks,
 		Pulses:   pulses,
+		Critical: critical,
 		Notify:   tracker,
 		Logger:   logger,
 	})
@@ -265,15 +276,24 @@ func fanOut(senders []notify.Sender) notify.Sender {
 // (name to silence window), which are not checks that run but silences the
 // lantern waits out. The id names this host: the local resource checks are
 // about it and it becomes their target.
-func parseWatches(id string, watches []string) ([]check.Check, map[string]time.Duration, error) {
+//
+// A "critical:" prefix marks the watch as worth interrupting the operator's
+// day: only critical subjects reach push channels. The returned set keys on
+// "check target", the subject key quorum uses. Like the watch list itself,
+// the same critical markers belong on every box: any lantern can win the
+// notify election, and it pages by its own config.
+func parseWatches(id string, watches []string) ([]check.Check, map[string]time.Duration, map[string]bool, error) {
 	var checks []check.Check
 	var pulses map[string]time.Duration
+	critical := make(map[string]bool)
 	for _, w := range watches {
-		kind, rest, _ := strings.Cut(w, ":")
+		spec, crit := strings.CutPrefix(w, "critical:")
+		before := len(checks)
+		kind, rest, _ := strings.Cut(spec, ":")
 		switch kind {
 		case "tcp":
 			if _, _, err := net.SplitHostPort(rest); err != nil {
-				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, check.TCP{Addr: rest})
 		case "http", "https":
@@ -287,7 +307,7 @@ func parseWatches(id string, watches []string) ([]check.Check, map[string]time.D
 				u = "https://" + u
 			}
 			if strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://") == "" {
-				return nil, nil, fmt.Errorf("cannot watch %q: http needs a url", w)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: http needs a url", w)
 			}
 			checks = append(checks, check.HTTP{URL: u})
 		case "cert":
@@ -298,45 +318,45 @@ func parseWatches(id string, watches []string) ([]check.Check, map[string]time.D
 				idx := strings.LastIndex(rest, ":")
 				d, err := strconv.Atoi(rest[idx+1:])
 				if err != nil || d <= 0 || d > 365 {
-					return nil, nil, fmt.Errorf("cannot watch %q: %q is not a day count", w, rest[idx+1:])
+					return nil, nil, nil, fmt.Errorf("cannot watch %q: %q is not a day count", w, rest[idx+1:])
 				}
 				addr, days = rest[:idx], d
 			}
 			if addr == "" {
-				return nil, nil, fmt.Errorf("cannot watch %q: cert needs a host", w)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: cert needs a host", w)
 			}
 			if !strings.Contains(addr, ":") {
 				addr = net.JoinHostPort(addr, "443")
 			}
 			if _, _, err := net.SplitHostPort(addr); err != nil {
-				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, check.Cert{Addr: addr, WarnWithin: time.Duration(days) * 24 * time.Hour})
 		case "disk":
 			path, pct, err := splitThreshold(rest)
 			if err != nil {
-				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			if path == "" {
-				return nil, nil, fmt.Errorf("cannot watch %q: disk needs a path, like disk:/", w)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: disk needs a path, like disk:/", w)
 			}
 			checks = append(checks, &check.Disk{Host: id, Path: path, Max: pct})
 		case "cpu":
 			pct, err := parsePercent(rest)
 			if err != nil {
-				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, &check.CPU{Host: id, Max: pct})
 		case "memory":
 			pct, err := parsePercent(rest)
 			if err != nil {
-				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, &check.Memory{Host: id, Max: pct})
 		case "swap":
 			pct, err := parsePercent(rest)
 			if err != nil {
-				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			checks = append(checks, &check.Swap{Host: id, Max: pct})
 		case "uptime":
@@ -344,7 +364,7 @@ func parseWatches(id string, watches []string) ([]check.Check, map[string]time.D
 			if rest != "" {
 				var err error
 				if min, err = time.ParseDuration(rest); err != nil {
-					return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+					return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 				}
 			}
 			checks = append(checks, &check.Uptime{Host: id, Min: min})
@@ -353,7 +373,7 @@ func parseWatches(id string, watches []string) ([]check.Check, map[string]time.D
 			if rest != "" {
 				v, err := strconv.ParseFloat(rest, 64)
 				if err != nil || v <= 0 {
-					return nil, nil, fmt.Errorf("cannot watch %q: %q is not a rate in Mbit/s", w, rest)
+					return nil, nil, nil, fmt.Errorf("cannot watch %q: %q is not a rate in Mbit/s", w, rest)
 				}
 				mbit = v
 			}
@@ -364,19 +384,19 @@ func parseWatches(id string, watches []string) ([]check.Check, map[string]time.D
 			// already keeps colons out.
 			name, win, _ := strings.Cut(rest, ":")
 			if err := validPulseName(name); err != nil {
-				return nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: %w", w, err)
 			}
 			if name == id {
 				// Rule 4 would treat a receipt about this name as the
 				// host's own authoritative word. Refuse the collision
 				// instead of documenting our way around it.
-				return nil, nil, fmt.Errorf("cannot watch %q: a pulse may not carry this lantern's own name", w)
+				return nil, nil, nil, fmt.Errorf("cannot watch %q: a pulse may not carry this lantern's own name", w)
 			}
 			window := 25 * time.Hour
 			if win != "" {
 				d, err := time.ParseDuration(win)
 				if err != nil || d <= 0 {
-					return nil, nil, fmt.Errorf("cannot watch %q: %q is not a window, use a duration like 25h", w, win)
+					return nil, nil, nil, fmt.Errorf("cannot watch %q: %q is not a window, use a duration like 25h", w, win)
 				}
 				window = d
 			}
@@ -384,11 +404,21 @@ func parseWatches(id string, watches []string) ([]check.Check, map[string]time.D
 				pulses = make(map[string]time.Duration)
 			}
 			pulses[name] = window
+			if crit {
+				critical["pulse "+name] = true
+			}
 		default:
-			return nil, nil, fmt.Errorf("cannot watch %q: known checks are tcp, http, cert, disk, cpu, memory, swap, uptime, net, pulse", w)
+			return nil, nil, nil, fmt.Errorf("cannot watch %q: known checks are tcp, http, cert, disk, cpu, memory, swap, uptime, net, pulse", w)
+		}
+		if crit {
+			// The check normalized its own target (a default port, a scheme),
+			// so the subject key comes from the check, not the raw spec.
+			for _, c := range checks[before:] {
+				critical[c.Name()+" "+c.Target()] = true
+			}
 		}
 	}
-	return checks, pulses, nil
+	return checks, pulses, critical, nil
 }
 
 // splitThreshold peels an optional trailing :percent off a path, so that

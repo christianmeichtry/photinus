@@ -729,3 +729,30 @@ end-to-end payload encryption (phase 2, with the app's Notification Service
 Extension) and any relay-side identity. When photinus is public, the relay
 is what ships in the default config, and the -apns flags become the
 self-hosting option.
+
+## Facts versus opinions in the store (0.1.7, 0.1.8)
+
+Two live incidents, minutes apart, drew the same lesson from different
+directions: the store holds two kinds of observation and they age
+differently.
+
+An opinion is a lantern's current view of a check it runs. Opinions are
+cheap to replace: the next probe regenerates them, so they may die with
+their observer. When a lantern says farewell, every peer forgets its
+opinions and a tombstone keeps anti-entropy from resurrecting them; when a
+paced check recovers, its next probe is a cadence away. 0.1.7 fixed the
+TTL half of this: the observation that carries a down check back up used
+to inherit the shrunk re-probe TTL and expired long before the next
+scheduled probe, leaving the subject voterless ("no fresh word") for the
+rest of its hour.
+
+A pulse receipt is a fact: the job pinged at time T. No probe can
+regenerate it, the job will not ping again until its next run, and the
+whole point of a dead man's switch is remembering exactly when the last
+ping happened. 0.1.8 made receipts survive everything an opinion does not:
+forget() spares them, departure tombstones let them merge back, and a
+restarted lantern may take its own receipt back from the swarm, the one
+case where hearing your own word from a peer is not spoofing but the
+swarm handing back what only it still remembers. The measure, as always:
+the fact "the job pinged at T" must stay true when any single node
+disappears, including the node that heard the ping.

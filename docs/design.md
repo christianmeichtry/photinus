@@ -756,3 +756,31 @@ case where hearing your own word from a peer is not spoofing but the
 swarm handing back what only it still remembers. The measure, as always:
 the fact "the job pinged at T" must stay true when any single node
 disappears, including the node that heard the ping.
+
+## Reaping the never-declared dead (0.1.10)
+
+An APNs stress test left a phantom: an ephemeral lantern joined the real
+swarm, failed, and quorum correctly called it down. It then never cleared.
+The roster (everSeen, the quorum denominator and the liveness subject list)
+keeps a merely-dead member forever, and only a graceful Leave removes one.
+That rule is deliberate and load-bearing: a lantern that stopped answering
+stays counted so a minority partition can never reach quorum about the
+majority, and a declared -expect box shows down until the operator removes
+the declaration. But a node that was never declared and never returns has
+none of those reasons to persist, and it lingered as a DARK card with no
+way to age out.
+
+So a never-declared member that stays dead past a long grace (one hour) is
+reaped from the roster. The grace is the whole subtlety: shorter than a
+partition's heal time, forgetting the far side would let a minority reach
+quorum, so the window is set well past any partition expected to auto-heal.
+Declared members are exempt entirely, which is why the operator's real fleet
+(all in -expect) is unaffected: only transient, test, or decommissioned
+nodes that were never declared get forgotten, and a reaped node that returns
+simply rejoins. Reaping is silent: the subject goes to no-voters, which is
+unknown, which never pages, and the stale down observations age out on their
+own once no lantern reports the subject any longer.
+
+The immediate lesson was operational, recorded with the fix: never join the
+real swarm with a throwaway id to test push; read the gossip without
+joining, or stand up a separate swarm on another port and key.

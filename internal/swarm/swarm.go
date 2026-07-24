@@ -71,9 +71,21 @@ type Swarm struct {
 	state    func() []byte
 	everSeen map[string]struct{}
 	expected map[string]struct{}
+	// died stamps when a never-declared member was last seen to fail (not
+	// leave). The reaper forgets it after a long grace; declared members
+	// never get a stamp and are never reaped.
+	died map[string]time.Time
 
 	stop chan struct{}
 }
+
+// reapDeadAfter is how long a never-declared lantern may stay dead before
+// the swarm forgets it. Long on purpose: shorter than this a partition that
+// will auto-heal is indistinguishable from a departure, and forgetting a
+// node mid-partition would let a minority reach quorum. Declared (-expect)
+// members are exempt entirely; the merely-dead among them stay counted and
+// reported down until the operator removes the declaration.
+const reapDeadAfter = time.Hour
 
 // Join starts the gossip layer and tries the seed list. A seed that is not
 // up yet is fine: joining keeps being retried in the background, and a peer
@@ -98,6 +110,7 @@ func Join(cfg Config) (*Swarm, error) {
 		onFlash:  cfg.OnFlash,
 		everSeen: map[string]struct{}{cfg.ID: {}},
 		expected: make(map[string]struct{}),
+		died:     make(map[string]time.Time),
 		stop:     make(chan struct{}),
 	}
 	// Declared members exist from the start: seed them into the roster so a
@@ -205,6 +218,7 @@ func Join(cfg Config) (*Swarm, error) {
 	if len(cfg.Seeds) > 0 {
 		go s.keepJoining(cfg.Seeds)
 	}
+	go s.reapLoop()
 	return s, nil
 }
 
@@ -228,6 +242,46 @@ type rejoiner interface {
 // split within an interval, without scaling fan-out or hammering the wire.
 func (s *Swarm) keepJoining(seeds []string) {
 	s.rejoinLoop(s.ml, seeds, 5*time.Second, 60*time.Second)
+}
+
+// reapLoop forgets never-declared lanterns that have stayed dead past the
+// grace, on a cadence a fraction of the grace so the panel clears within
+// minutes of the window elapsing.
+func (s *Swarm) reapLoop() {
+	t := time.NewTicker(reapDeadAfter / 12)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-t.C:
+			alive := make(map[string]bool)
+			for _, n := range s.ml.Members() {
+				alive[n.Name] = true
+			}
+			s.reap(time.Now(), alive)
+		}
+	}
+}
+
+// reap drops from the roster any never-declared lantern that is not
+// currently a member and has been dead longer than the grace. It takes the
+// alive set and the clock so the policy is testable without a live gossip
+// network. A returning node simply rejoins; reaping is not destructive.
+func (s *Swarm) reap(now time.Time, alive map[string]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for name, at := range s.died {
+		if _, declared := s.expected[name]; declared || alive[name] {
+			delete(s.died, name) // no longer our business, or it came back
+			continue
+		}
+		if now.Sub(at) > reapDeadAfter {
+			delete(s.everSeen, name)
+			delete(s.died, name)
+			s.log.Printf("lantern %s stayed dead past %s and was never declared, forgotten", name, reapDeadAfter)
+		}
+	}
 }
 
 func (s *Swarm) rejoinLoop(r rejoiner, seeds []string, lonely, steady time.Duration) {
@@ -455,6 +509,7 @@ type events struct{ s *Swarm }
 func (e *events) NotifyJoin(n *memberlist.Node) {
 	e.s.mu.Lock()
 	e.s.everSeen[n.Name] = struct{}{}
+	delete(e.s.died, n.Name) // back among the living: cancel any reap clock
 	e.s.mu.Unlock()
 	e.s.log.Printf("lantern %s joined the swarm", n.Name)
 }
@@ -470,6 +525,7 @@ func (e *events) NotifyLeave(n *memberlist.Node) {
 		if !declared {
 			delete(e.s.everSeen, n.Name)
 		}
+		delete(e.s.died, n.Name)
 		e.s.mu.Unlock()
 		if declared {
 			e.s.log.Printf("lantern %s left gracefully but is a declared member, kept and reported down", n.Name)
@@ -478,6 +534,18 @@ func (e *events) NotifyLeave(n *memberlist.Node) {
 		}
 		return
 	}
+	// Merely dead, not departed: it stays counted so a minority partition
+	// stays quiet and a declared box keeps showing down. But a node that was
+	// never declared and never returns would linger forever as a DARK card,
+	// so stamp its death; the reaper forgets it after the grace. The stamp
+	// is set once per death (a flap clears it via NotifyJoin first).
+	e.s.mu.Lock()
+	if _, declared := e.s.expected[n.Name]; !declared {
+		if e.s.died[n.Name].IsZero() {
+			e.s.died[n.Name] = time.Now()
+		}
+	}
+	e.s.mu.Unlock()
 	e.s.log.Printf("lantern %s stopped answering", n.Name)
 }
 

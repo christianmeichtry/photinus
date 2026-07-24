@@ -401,3 +401,51 @@ func FuzzFitForGossip(f *testing.F) {
 		}
 	})
 }
+
+func TestPulseReceiptsSurviveDeparture(t *testing.T) {
+	now := time.Now().UTC()
+	receipt := quorum.Observation{Observer: "ewok", Target: "certs-job", Check: "pulse",
+		State: quorum.StateUp, Detail: "pulsed at " + now.Format(time.RFC3339), Seen: now, TTL: 691200}
+	opinion := quorum.Observation{Observer: "ewok", Target: "ewok", Check: "disk:/",
+		State: quorum.StateUp, Seen: now, TTL: 30}
+
+	t.Run("forget spares the receipt, drops the opinions", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		l.store[storeKey(receipt)] = receipt
+		l.store[storeKey(opinion)] = opinion
+		l.forget("ewok")
+		if _, ok := l.store[storeKey(receipt)]; !ok {
+			t.Error("the pulse receipt was forgotten with its receiver's farewell")
+		}
+		if _, ok := l.store[storeKey(opinion)]; ok {
+			t.Error("a departed lantern's own opinion survived forget")
+		}
+	})
+
+	t.Run("the tombstone lets a receipt merge back, not an opinion", func(t *testing.T) {
+		l := New(Config{ID: "l1"})
+		l.forget("ewok") // tombstone stamped after the observations were Seen
+		payload, _ := json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{receipt, opinion}})
+		l.ReceiveFlash(payload)
+		if _, ok := l.store[storeKey(receipt)]; !ok {
+			t.Error("the tombstone blocked a pulse receipt from anti-entropy")
+		}
+		if _, ok := l.store[storeKey(opinion)]; ok {
+			t.Error("the tombstone let a ghost opinion resurrect")
+		}
+	})
+
+	t.Run("a restarted lantern takes its own receipt back, nothing else", func(t *testing.T) {
+		l := New(Config{ID: "ewok"}) // fresh restart: empty store
+		own := quorum.Observation{Observer: "ewok", Target: "ewok", Check: "disk:/",
+			State: quorum.StateDown, Seen: now, TTL: 30}
+		payload, _ := json.Marshal(envelope{V: flashV, Obs: []quorum.Observation{receipt, own}})
+		l.ReceiveFlash(payload)
+		if _, ok := l.store[storeKey(receipt)]; !ok {
+			t.Error("the swarm could not hand a restarted lantern its own receipt back")
+		}
+		if _, ok := l.store[storeKey(own)]; ok {
+			t.Error("the spoof guard fell: a peer smuggled in this lantern's own opinion")
+		}
+	})
+}

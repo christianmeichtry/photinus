@@ -16,7 +16,7 @@
     --dusk:#0B1F24; --panel:#0F262D; --rule:rgba(232,226,210,.10);
     --ink:#E8E2D2; --dim:#8FA5A3; --faint:#5C7378;
     --up:#54C489; --warn:#FFC24B; --down:#E85D42;
-    --mac:#C9A3E0; --arm:#7FB4D9; --win:#E0B4A3;
+    --mac:#C9A3E0; --arm:#7FB4D9; --win:#E0B4A3; --pulse:#8FD9C9;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
   }
@@ -45,9 +45,12 @@
   .clearbtn[hidden]{display:none}
   .orderbtn{display:flex;align-items:center;gap:.4rem}
 
-  .hero{display:flex;flex-wrap:wrap;align-items:center;gap:1rem 1.6rem;margin:1.6rem 0 1.7rem;
-    position:sticky;top:0;z-index:15;background:var(--dusk);
+  /* three neutral zones: watched services left, the swarm+services verdict
+     centred (it belongs to neither), the swarm's own dots+health right. */
+  .hero{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:1.6rem;row-gap:.6rem;
+    margin:1.6rem 0 1.7rem;position:sticky;top:0;z-index:15;background:var(--dusk);
     padding:.9rem 0 1rem;box-shadow:0 10px 20px -16px rgba(0,0,0,.8)}
+  @media (max-width:680px){.hero{grid-template-columns:1fr;row-gap:1rem;justify-items:center}}
   .tip{position:fixed;z-index:60;display:none;pointer-events:none;transform:translate(-50%,-100%);
     font-family:var(--mono);font-size:.74rem;font-weight:700;letter-spacing:.02em;color:var(--ink);
     background:#08171b;border:1px solid var(--rule);border-radius:6px;padding:.28rem .5rem;
@@ -57,7 +60,7 @@
 
   .matrix{display:flex;flex-wrap:wrap;gap:.32rem;align-content:start}
   .matrix.mhosts{justify-content:flex-end;max-width:22rem}
-  .matrix.msvc{max-width:22rem}
+  .matrix.msvc{max-width:22rem;justify-self:start;min-width:0}
   .sq{position:relative;width:1.15rem;height:1.15rem;border-radius:4px;background:var(--up);cursor:pointer;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
   .sq:hover{transform:scale(1.18)}
@@ -92,13 +95,21 @@
   @media (prefers-reduced-motion:reduce){.sq.down{animation:none}.sq{transition:none}
     .mrow.hit,.svcchip.hit,.svccard.hit{animation:none;box-shadow:0 0 0 2px var(--warn),0 0 20px rgba(255,194,75,.45)}}
 
-  .hverdict{margin-left:auto;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:.3rem}
-  .verdict{font-family:var(--mono);font-size:1.65rem;font-weight:900;letter-spacing:-.01em;
-    display:flex;gap:.7rem;align-items:center}
-  .verdict .ok{color:var(--up)} .verdict .vd{color:var(--down)} .verdict .vw{color:var(--warn)}
-  .verdict .sep{color:var(--faint);font-weight:400}
-  .verdict .vd,.verdict .vw{cursor:pointer;text-underline-offset:3px}
-  .verdict .vd:hover,.verdict .vw:hover{text-decoration:underline}
+  .hverdict{justify-self:end;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:.3rem}
+  .verdict{justify-self:center;align-self:center;font-family:var(--mono);
+    display:flex;gap:.6rem;align-items:center}
+  .verdict .ok{color:var(--up)}
+  /* down/warning counts are toggle buttons: outlined = off, filled = on (that
+     filter is applied). Click toggles; a second click clears. Loud on
+     purpose: this is read from across a room. */
+  .verdict .vd,.verdict .vw{cursor:pointer;font-size:1.45rem;font-weight:900;letter-spacing:-.01em;
+    line-height:1;border-radius:99px;padding:.45rem 1.1rem;border:2px solid currentColor;
+    background:transparent;transition:background .12s ease,color .12s ease}
+  .verdict .vd{color:var(--down)} .verdict .vw{color:var(--warn)}
+  .verdict .vd:hover,.verdict .vw:hover{background:rgba(232,226,210,.08)}
+  .verdict .vd.on{background:var(--down);color:var(--dusk)}
+  .verdict .vw.on{background:var(--warn);color:var(--dusk)}
+  .verdict .vd.on:hover,.verdict .vw:hover.on{filter:brightness(1.05)}
   .swarmhealth{font-family:var(--mono);font-size:.78rem;color:var(--dim);letter-spacing:.02em}
   .swarmhealth .part{color:var(--warn);font-weight:700}
   .swarmhealth .sk{color:var(--faint)}
@@ -120,7 +131,7 @@
   .dot.stale{background:transparent;border:1px solid var(--faint)}
   .mname{font-family:var(--mono);font-weight:750;font-size:1.15rem;color:var(--ink);letter-spacing:.05em}
   .mplat{font-family:var(--mono);font-size:.78rem;color:var(--faint)}
-  .mplat.arch-mac{color:var(--mac)} .mplat.arch-arm{color:var(--arm)} .mplat.arch-win{color:var(--win)}
+  /* arch is plain text: those hues now belong to the check-type pills, one hue one meaning */
   .mver{font-family:var(--mono);font-size:.66rem;color:var(--faint);letter-spacing:.02em;align-self:center}
   .mlive{margin-left:auto;font-family:var(--mono);font-size:.8rem;color:var(--faint);white-space:nowrap}
   .mlive.dark{color:var(--down);font-weight:700}
@@ -170,7 +181,7 @@
   .quorum .qtxt{color:var(--dim)} .quorum .qtxt b{color:var(--ink);font-weight:800}
   .quorum .kd{color:var(--down);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
 
-  .svc{display:grid;grid-template-columns:repeat(auto-fill,minmax(15.5rem,1fr));gap:.5rem}
+  .svc{display:grid;grid-template-columns:repeat(auto-fill,minmax(18.5rem,1fr));gap:.5rem}
   .svcchip{background:var(--panel);border:1px solid var(--rule);border-radius:9px;padding:.6rem .8rem;
     display:flex;flex-direction:column;gap:.35rem;min-height:3.6rem;justify-content:center}
   .svcchip.warn{border-color:rgba(255,194,75,.4)}
@@ -179,17 +190,34 @@
   .svcchip .st{width:.55rem;height:.55rem;border-radius:99px;background:var(--up);flex:none}
   .svcchip.warn .st{background:var(--warn)}
   .svcchip.stale .st{background:transparent;border:1px solid var(--faint)}
-  .svctarget{font-family:var(--mono);font-size:1rem;font-weight:700;color:var(--ink);letter-spacing:.02em;
+  .svctarget{font-family:var(--mono);font-size:1.05rem;font-weight:800;color:var(--ink);letter-spacing:.02em;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .svctype{margin-left:auto;font-family:var(--mono);font-size:.72rem;font-weight:800;text-transform:uppercase;
-    letter-spacing:.09em;color:var(--ink);background:rgba(232,226,210,.16);border:1px solid var(--rule);
-    border-radius:6px;padding:.16rem .55rem;flex:none}
-  .svctype.t-cert{color:var(--mac);background:rgba(201,163,224,.15);border-color:rgba(201,163,224,.4)}
-  .svctype.t-http,.svctype.t-https{color:var(--arm);background:rgba(127,180,217,.15);border-color:rgba(127,180,217,.4)}
-  .svctype.t-tcp,.svctype.t-ssh{color:var(--win);background:rgba(224,180,163,.15);border-color:rgba(224,180,163,.4)}
-  .svcchip .det{font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--up);padding-left:1.05rem}
+  /* one pill per check on the site. Weight is state, hue is type: a healthy
+     pill is OUTLINED in its type's hue and recedes; a troubled pill is
+     FILLED with its state's color and comes forward. One pill alone tells
+     its state by weight, no palette memory needed, at ten feet. */
+  .pillrow{margin-left:auto;display:flex;gap:.3rem;flex:none}
+  .svctype{font-family:var(--mono);font-size:.7rem;font-weight:900;text-transform:uppercase;
+    letter-spacing:.08em;background:transparent;border-radius:6px;
+    padding:.2rem .55rem;flex:none;color:var(--dim);box-shadow:inset 0 0 0 1.5px currentColor}
+  .svctype.t-cert{color:var(--mac)}
+  .svctype.t-http,.svctype.t-https{color:var(--arm)}
+  .svctype.t-tcp,.svctype.t-ssh{color:var(--win)}
+  .svctype.t-pulse{color:var(--pulse)}
+  .svctype.s-warn{color:var(--dusk);background:var(--warn);box-shadow:none}
+  .svctype.s-down{color:var(--ink);background:var(--down);box-shadow:none}
+  .svctype.s-stale{color:var(--faint);box-shadow:inset 0 0 0 1.5px var(--faint)}
+  .svcchip .det{font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--up);padding-left:1.05rem;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .svcchip.warn .det{color:var(--warn)}
   .svcchip.stale .det{color:var(--faint)}
+  /* critical classifies the SITE (this one pages when down). No glyph: every
+     small mark drowned in the dot/pill vocabulary. Structure instead: a
+     quiet ink edge on the card itself. On a down card it has earned
+     loudness (it paged the phone): a filled ink tag beside the red DOWN. */
+  .svcchip.crit{border-left:3px solid var(--ink)}
+  .crittag{font-family:var(--mono);font-size:.7rem;font-weight:900;letter-spacing:.1em;flex:none;
+    color:var(--dusk);background:var(--ink);border-radius:5px;padding:.18rem .5rem}
 
   /* a DOWN service is the only quorum-confirmed outage on the page: give it a full card, loudest thing here */
   .svccard{grid-column:1/-1;background:rgba(232,93,66,.09);border:1px solid rgba(232,93,66,.5);
@@ -269,7 +297,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 // ---- swarm state, rebuilt from /status.json on every tick ----
-let hosts = [], services = [], lit = 0, known = 0, drift = 0, skewInfo = "";
+let hosts = [], services = [], sites = [], lit = 0, known = 0, drift = 0, skewInfo = "";
 let filterText = "";
 // heartbeat, driven by real flash timestamps (observation `seen`), compared
 // only against each other so clock skew between boxes cannot fool it; elapsed
@@ -303,6 +331,30 @@ function netVal(s){ const m=/net is (\S+) in, (\S+) out/.exec(s.detail||""); ret
 function upVal(s){ let m=/up for (.+)$/.exec(s.detail||""); if(m) return m[1]; m=/rebooted (.+?) ago/.exec(s.detail||""); if(m) return "rebooted "+m[1]; return s.detail||"?"; }
 function shortReason(d){ d=d||""; const i=d.lastIndexOf(": "); return i>=0?d.slice(i+2):d; }
 function svcType(s){ if(s.check==="http") return s.target.startsWith("http://")?"http":"https"; if(s.check==="cert") return "cert"; if(s.check==="tcp") return s.target.endsWith(":22")?"ssh":"tcp"; return s.check; }
+
+// siteOf tidies a target into the name an operator would say out loud:
+// no scheme, no path, no default TLS port. A non-default port stays; it
+// carries information (alderaan:7947 is not alderaan).
+function siteOf(t){
+  return t.replace(/^https?:\/\//,"").replace(/\/.*$/,"").replace(/:443$/,"");
+}
+
+// compactDet shrinks a healthy entry's sentence to what matters at a
+// glance; full sentences stay in the down cards where they earn the room.
+function compactDet(e){
+  if(e.s==="down") return e.det;
+  if(e.s==="stale") return "no fresh word";
+  let m;
+  if((m=/^(\d+) OK in (\S+)/.exec(e.det))) return `${m[1]} in ${m[2]}`;
+  if((m=/valid, (\d+) days left/.exec(e.det))) return `cert ${m[1]}d`;
+  if(/^connected to /.test(e.det)) return "connected";
+  if((m=/^pulsed at (.+)$/.exec(e.det))){
+    const t=Date.parse(m[1]);
+    if(t){const s=Math.max(0,(Date.now()-t)/1000);
+      return "pulsed "+(s<90?Math.round(s)+"s":s<5400?Math.round(s/60)+"m":s<129600?Math.round(s/3600)+"h":Math.round(s/86400)+"d")+" ago";}
+  }
+  return e.det;
+}
 
 const rank = {down:0, warn:1, stale:2, up:3};
 const grouped = arr => arr.slice().sort((a,b)=> rank[a.worst||a.s]-rank[b.worst||b.s] || (a.name||a.target).localeCompare(b.name||b.target));
@@ -367,7 +419,28 @@ function ingest(st){
     if (cls==="down") det = `${s.votes}/${s.voters} agree · ${shortReason(s.detail)}`;
     else if (!s.voters) det = "no fresh word";
     else det = s.detail || "";
-    return {type:svcType(s), target:s.target, s:cls, det};
+    return {type:svcType(s), target:s.target, s:cls, det, critical:!!s.critical};
+  });
+
+  // One site, one object: the cert and the http of stadler.alustock.ch are
+  // one thing in an operator's head, and on a screen across the room they
+  // must be one thing on the wall too. Group by the tidied host; protocol
+  // and the default TLS port carry no information and are stripped.
+  const typeOrder = {http:0, https:0, cert:1, tcp:2, ssh:2, pulse:3};
+  const bySite = new Map();
+  for (const s of services) {
+    const key = siteOf(s.target);
+    const g = bySite.get(key) || {name:key, entries:[], critical:false};
+    g.entries.push(s);
+    g.critical = g.critical || s.critical;
+    bySite.set(key, g);
+  }
+  sites = [...bySite.values()].map(g => {
+    g.entries.sort((a,b) => (typeOrder[a.type]??9)-(typeOrder[b.type]??9));
+    g.worst = g.entries.some(e=>e.s==="down") ? "down"
+      : g.entries.some(e=>e.s==="warn") ? "warn"
+      : g.entries.some(e=>e.s==="stale") ? "stale" : "up";
+    return g;
   });
 
   skewInfo = drift ? `${drift} clock${drift>1?"s":""} drifting` : "clocks in sync";
@@ -401,32 +474,36 @@ function updateTab(downs,warns){
 }
 
 function renderHero(){
-  const downs=hosts.filter(h=>h.worst==="down").length+services.filter(s=>s.s==="down").length;
-  const warns=hosts.filter(h=>h.worst==="warn").length+services.filter(s=>s.s==="warn").length;
+  // one dot and one count per SITE, not per check: a site with its http and
+  // cert both down is one broken thing, on the wall and in the verdict.
+  const downs=hosts.filter(h=>h.worst==="down").length+sites.filter(g=>g.worst==="down").length;
+  const warns=hosts.filter(h=>h.worst==="warn").length+sites.filter(g=>g.worst==="warn").length;
   const dot=h=>{const st=h.worst==="up"?"":h.worst;
     return `<span class="sq ${st}" data-name="${esc(h.name)}" data-label="${esc(h.name+" · "+(st||"up"))}"></span>`;};
-  const sdot=x=>{const st=x.s==="up"?"":x.s;const t=x.target.replace(/^https?:\/\//,"");
-    // data-name carries the FULL target so the click handler matches the card's
-    // data-target; t is only the tidied label. (stripped != full broke http/cert dots)
-    return `<span class="sq svc ${st}" data-name="${esc(x.target)}" data-label="${esc(x.type+" "+t+" · "+(st||"up"))}"></span>`;};
+  const sdot=g=>{const st=g.worst==="up"?"":g.worst;
+    const types=g.entries.map(e=>e.type).join("+");
+    return `<span class="sq svc ${st}" data-name="${esc(g.name)}" data-label="${esc(g.name+" · "+(st||"up")+" · "+types)}"></span>`;};
   // no news is good news: the verdict is silent when nothing is wrong, and only
   // ever names trouble. Nothing here advertises that things are fine.
+  // the counts are toggle buttons; "on" = that filter is currently applied.
+  const on=$("search").value;
   let v="";
   if(downs||warns){const parts=[];
-    if(downs)parts.push(`<span class="vd">${downs} down</span>`);
-    if(warns)parts.push(`<span class="vw">${warns} warning${warns===1?"":"s"}</span>`);
-    v=parts.join(`<span class="sep"> · </span>`);}
+    if(downs)parts.push(`<span class="vd${on==="down"?" on":""}" role="button" aria-pressed="${on==="down"}">${downs} down</span>`);
+    if(warns)parts.push(`<span class="vw${on==="warn"?" on":""}" role="button" aria-pressed="${on==="warn"}">${warns} warning${warns===1?"":"s"}</span>`);
+    v=parts.join("");}
   const unreach=known-lit;
+  // "N/M lit" already carries the last-known size as its denominator; no need to
+  // repeat it. skew, like the verdict, speaks only when it drifts.
   const litpart=unreach>0?`<span class="part">${lit}/${known} lit</span>`:`${lit}/${known} lit`;
-  // skew, like the verdict, speaks only when it drifts; "in sync" says nothing.
-  const health=`${litpart}<span class="sk"> · known ${known}</span>`+(drift?`<span class="sk"> · </span><span class="part">${esc(skewInfo)}</span>`:"");
-  // watched dots on the left; swarm dots live inside the verdict box, right above
-  // all-quiet / lit / known, so the swarm summary and its health line read as one unit.
-  const svcBlock=services.length?`<div class="matrix msvc">`+grouped(services).map(sdot).join("")+`</div>`:"";
+  const health=litpart+(drift?`<span class="sk"> · </span><span class="part">${esc(skewInfo)}</span>`:"");
+  // three grid zones, always present so the columns stay put: services left,
+  // verdict centre (neutral: it counts swarm AND services), swarm right.
+  const svcBlock=`<div class="matrix msvc">`+(sites.length?grouped(sites).map(sdot).join(""):"")+`</div>`;
   const hostBlock=hosts.length?`<div class="matrix mhosts">`+grouped(hosts).map(dot).join("")+`</div>`:"";
   $("hero").innerHTML=svcBlock+
+    `<div class="verdict">${v}</div>`+
     `<div class="hverdict">`+hostBlock+
-    (v?`<div class="verdict">${v}</div>`:"")+
     `<div class="swarmhealth">${health}</div></div>`;
   updateTab(downs,warns);
 }
@@ -502,8 +579,10 @@ function cardHTML(h){
 function matchHost(h){const q=filterText.trim().toLowerCase(); if(!q)return true;
   return h.name.toLowerCase().includes(q)||(h.plat||"").toLowerCase().includes(q)||
     (h.worst||"").includes(q)||(h.live==="dark"&&("down dark".includes(q)));}
-function matchSvc(x){const q=filterText.trim().toLowerCase(); if(!q)return true;
-  return x.target.toLowerCase().includes(q)||x.type.includes(q)||x.s.includes(q);}
+function matchSite(g){const q=filterText.trim().toLowerCase(); if(!q)return true;
+  return g.name.toLowerCase().includes(q)||g.worst.includes(q)
+    ||g.entries.some(e=>e.type.includes(q)||e.s.includes(q)||e.det.toLowerCase().includes(q))
+    ||("critical".startsWith(q)&&q.length>=4&&g.critical);}
 
 // FLIP: a box that worsens slides up to the trouble zone instead of jumping,
 // its bars ease to their new width and the numbers count across.
@@ -541,27 +620,43 @@ function renderMeters(animate){
   });
 }
 
-function svcDownCard(s){
-  const m=/^(\d+)\/(\d+)\s*agree/.exec(s.det);
-  let q="",rest=s.det;
+function siteDownCard(g){
+  const down=g.entries.find(e=>e.s==="down");
+  const m=/^(\d+)\/(\d+)\s*agree/.exec(down.det);
+  let q="",rest=down.det;
   if(m){const a=+m[1],b=+m[2];let pips="";
     for(let i=0;i<b;i++)pips+=`<span class="pip ${i<a?"on":""}"></span>`;
-    rest=s.det.replace(/^\d+\/\d+\s*agree\s*·?\s*/,"");
+    rest=down.det.replace(/^\d+\/\d+\s*agree\s*·?\s*/,"");
     q=`<span class="pips">${pips}</span><span class="qtxt"><b>${a} of ${b}</b> agree</span>`;}
-  return `<div class="svccard quorum" data-target="${esc(s.target)}">`+
-    `<div class="scrow"><span class="st"></span><span class="starget">${esc(s.target)}</span>`+
-    `<span class="svctype t-${esc(s.type)}">${esc(s.type)}</span><span class="downtag">DOWN</span></div>`+
+  const crit=g.critical?`<span class="crittag">CRITICAL</span>`:"";
+  return `<div class="svccard quorum" data-target="${esc(g.name)}">`+
+    `<div class="scrow"><span class="st"></span><span class="starget">${esc(g.name)}</span>`+
+    `<span class="downtag">DOWN</span>${crit}<span class="pillrow">${pillsOf(g)}</span></div>`+
     `<div class="scq">${q}${rest?`<span class="rest">${m?"· ":""}${esc(rest)}</span>`:""}</div></div>`;
 }
-function svcChip(s){
-  return `<div class="svcchip ${s.s==="up"?"":s.s}" data-target="${esc(s.target)}">`+
-    `<div class="svcrow"><span class="st"></span><span class="svctarget">${esc(s.target)}</span><span class="svctype t-${esc(s.type)}">${esc(s.type)}</span></div>`+
-    `<span class="det">${esc(s.det)}</span></div>`;
+// pillsOf renders one pill per check on the site: the type is the pill's
+// text and resting tint; trouble overrides the tint so the anomaly pops
+// while the word still names the check.
+function pillsOf(g){
+  return g.entries.map(e=>{
+    const st=e.s==="up"?"":` s-${e.s}`;
+    return `<span class="svctype t-${esc(e.type)}${st}" title="${esc(e.target)} · ${esc(e.det)}">${esc(e.type)}</span>`;
+  }).join("");
+}
+function siteChip(g){
+  const bad=g.entries.find(e=>e.s==="warn")||g.entries.find(e=>e.s==="stale");
+  const det=bad?compactDet(bad):g.entries.map(compactDet).join(" · ");
+  // the name owns its whole line; pills ride the detail row, so no site is
+  // ever ellipsized just because it is watched two ways. Critical is the
+  // ink edge on the card, out of the glyph vocabulary entirely.
+  return `<div class="svcchip ${g.worst==="up"?"":g.worst}${g.critical?" crit":""}" data-target="${esc(g.name)}"${g.critical?' title="critical: pages when down"':""}>`+
+    `<div class="svcrow"><span class="st"></span><span class="svctarget">${esc(g.name)}</span></div>`+
+    `<div class="svcrow"><span class="det">${esc(det)}</span><span class="pillrow">${pillsOf(g)}</span></div></div>`;
 }
 function renderSvc(){
-  const list=grouped(services.filter(matchSvc));
+  const list=grouped(sites.filter(matchSite));
   $("svc").innerHTML=list.length
-    ?list.map(s=>s.s==="down"?svcDownCard(s):svcChip(s)).join("")
+    ?list.map(g=>g.worst==="down"?siteDownCard(g):siteChip(g)).join("")
     :`<div class="empty">no service matches "${esc(filterText)}"</div>`;
 }
 
@@ -626,7 +721,7 @@ let order=loadOrder(); applyOrder(order);
 orderbtn.addEventListener("click",()=>{order=order==="swarm"?"svc":"swarm"; applyOrder(order); saveOrder(order);});
 
 // one path for every filter change, so the clear affordance never drifts
-function applyFilter(){ filterText=search.value; renderMeters(false); renderSvc(); clearbtn.hidden=!search.value.trim(); }
+function applyFilter(){ filterText=search.value; renderHero(); renderMeters(false); renderSvc(); clearbtn.hidden=!search.value.trim(); }
 function clearFilter(focus){ search.value=""; applyFilter(); if(focus)search.focus(); else search.blur(); }
 search.addEventListener("input",applyFilter);
 clearbtn.addEventListener("click",()=>clearFilter(true));

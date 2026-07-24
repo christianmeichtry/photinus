@@ -808,3 +808,25 @@ probe, freshly stamped. The command rides the local unix socket, never a
 network door, because erasing a watch is the operator's business and no one
 else's. One command retires a curated-away watch or a decommissioned box
 without waiting out any TTL.
+
+## Tuning the flash interval for larger fleets
+
+`-interval` (default 2s) is the cadence a lantern flashes and runs its cheap
+local checks; a YAML `interval:` key sets the same. Total swarm gossip and
+per-lantern check load scale roughly as one over the interval, so a large
+fleet, or one on Pi-class hardware, can raise it to 5s and cut both by about
+two and a half times. What does not change: memberlist's own failure
+detection, which is how a dead lantern is noticed, runs on its own timers
+regardless; and the alert delay dominates time-to-page anyway, so a slower
+interval adds only a second or two there.
+
+Two things to know before turning the knob. Everything derived from the
+interval scales with it, and the one that matters for an always-on screen is
+the panel's liveness signal: the flatline and per-lantern quiet thresholds
+are four and ten flashes (`interval_ms` carries the cadence to the panel and
+app so they stay correct at any value), so at 5s a wedged door reads as
+stale in twenty seconds instead of eight. And it must be uniform: the panel
+derives its thresholds from whichever door it queried, so a fleet running a
+mix of intervals gives ambiguous staleness. Set the same value on every box,
+or leave it at 2s, which is right until the fleet is large enough that the
+gossip actually costs something.

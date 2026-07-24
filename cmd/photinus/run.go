@@ -39,7 +39,7 @@ func runCmd(args []string) error {
 	bind := fs.String("bind", "0.0.0.0:7946", "host:port the gossip layer listens on")
 	advertise := fs.String("advertise", "", "host[:port] peers should reach this lantern on, when that differs from -bind (NAT, several interfaces)")
 	swarmSecret := fs.String("swarm-secret", os.Getenv("PHOTINUS_SWARM_SECRET"), "shared swarm secret: encrypts gossip so only lanterns holding it can join (defaults to $PHOTINUS_SWARM_SECRET, empty runs open)")
-	interval := fs.Duration("interval", 2*time.Second, "time between flashes")
+	interval := fs.Duration("interval", 2*time.Second, "time between flashes; 2s suits a small fleet, raise it (e.g. 5s) on a large or small-hardware fleet to cut gossip and check load roughly in proportion. Reactivity barely changes: dead-lantern detection is memberlist's, separate from this, and the alert delay dominates the rest. The panel's own liveness thresholds scale off it, so set the same value on every box")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	alertDelay := fs.Duration("alert-delay", 2*time.Minute, "how long a subject must stay down before the first page; brief blips under this are logged but never paged, 0 pages the instant quorum agrees")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments (combines with -notify-url)")

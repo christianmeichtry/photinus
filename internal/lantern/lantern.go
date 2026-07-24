@@ -377,17 +377,24 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, o := range obs {
-		if o.Observer == l.id {
+		// Pulse receipts pass every guard below: a receipt records a job's
+		// ping, not any lantern's health, and the fact must survive its
+		// receiver leaving, dying, or restarting (see forget). That includes
+		// this lantern taking its own receipt back after a restart, the one
+		// case where hearing your own word from a peer is not spoofing but
+		// the swarm handing back what only it still remembers.
+		pulseReceipt := o.Check == "pulse" && o.State == quorum.StateUp
+		if o.Observer == l.id && !pulseReceipt {
 			continue
 		}
-		if dep, ok := l.departed[o.Observer]; ok {
+		if dep, ok := l.departed[o.Observer]; ok && !pulseReceipt {
 			if !o.Seen.After(dep) {
 				continue
 			}
 			// Post-departure word from the lantern itself: it is back.
 			delete(l.departed, o.Observer)
 		}
-		if dep, ok := l.departed[o.Target]; ok && !o.Seen.After(dep) {
+		if dep, ok := l.departed[o.Target]; ok && !o.Seen.After(dep) && !pulseReceipt {
 			continue
 		}
 		key := storeKey(o)
@@ -433,6 +440,14 @@ func (l *Lantern) Farewell() {
 func (l *Lantern) forget(name string) {
 	l.mu.Lock()
 	for k, o := range l.store {
+		// A pulse receipt survives its receiver's farewell: it records an
+		// external event (the job pinged at time T), not the departing
+		// lantern's opinion about anything. Forgetting it would erase the
+		// swarm's memory of the ping and silently restart the silence
+		// countdown; the fact must stay true when any single node leaves.
+		if o.Check == "pulse" && o.State == quorum.StateUp {
+			continue
+		}
 		if o.Observer == name || o.Target == name {
 			delete(l.store, k)
 		}

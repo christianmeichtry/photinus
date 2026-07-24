@@ -155,7 +155,7 @@ func TestAPNSSendsToEveryPhone(t *testing.T) {
 }
 
 func TestAPNSRecoveredIsQuieter(t *testing.T) {
-	if apnsPriority("recovered") != "5" || apnsPriority("down") != "10" {
+	if APNSPriority("recovered") != "5" || APNSPriority("down") != "10" {
 		t.Error("priority ladder wrong")
 	}
 	p := payload(Event{Kind: "recovered", Check: "tcp", Target: "db:5432", Detail: "tcp on db:5432 recovered"})

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -275,14 +276,19 @@ func (l *Lantern) flash(ctx context.Context) {
 
 	if sw != nil {
 		// A flash must ride inside one UDP gossip packet, so a view that
-		// has outgrown the packet goes out as several small flashes.
-		for _, payload := range chunkFlash(own, 1000) {
-			sw.Flash(payload)
+		// has outgrown the packet goes out as several small flashes. Each
+		// chunk is named by its index so the next flash supersedes it in
+		// the gossip queue: every flash carries the whole view, so a
+		// queued older chunk holds nothing the newer flash does not
+		// restate, and retransmitting it would only crowd out fresh news.
+		for i, payload := range chunkFlash(own, 1000) {
+			sw.FlashNamed("flash/"+strconv.Itoa(i), payload)
 		}
 		// Phone registrations ride their own small envelope, so a token a
-		// phone handed this lantern reaches the swarm within a flash.
+		// phone handed this lantern reaches the swarm within a flash. Same
+		// superseding rule: only the latest registration set matters.
 		if payload := l.pushPayload(); payload != nil {
-			sw.Flash(payload)
+			sw.FlashNamed("push", payload)
 		}
 	}
 

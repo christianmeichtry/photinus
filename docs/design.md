@@ -809,6 +809,40 @@ network door, because erasing a watch is the operator's business and no one
 else's. One command retires a curated-away watch or a decommissioned box
 without waiting out any TTL.
 
+## A flash supersedes its predecessor in the gossip queue (0.1.12)
+
+Found on the real fleet after two weeks of burn-in. Two lanterns, drongar
+and ewok, had grown to 2.4 and 5.5 gigabytes of memory and were burning
+more than half a core each; drongar had pushed its host into swap
+exhaustion, and both were missing memberlist's UDP probe deadlines, which
+read from outside as a network problem. The network was fine. The queue
+was not.
+
+Every flash chunk was queued as a broadcast that nothing ever superseded:
+memberlist keeps such a payload until it has been transmitted its
+retransmit-count times, and the queue itself has no size cap. Enqueue rate
+scales with the watch list (each flash carries the whole view, chunked to
+packet size, every interval); drain rate is fixed by gossip cadence and
+packet budget. The 2026-07-24 roll added eighteen watches and pushed the
+enqueue rate past what the two slowest boxes could drain, and from that
+hour their queues only grew. The failure compounds twice over: memberlist
+walks the whole queue on every unnamed enqueue looking for broadcasts to
+invalidate, so a million-deep queue also costs most of a core, and a
+starved process misses probe deadlines, which makes peers look flaky,
+which is the one thing a monitor must never fabricate. The three healthy
+boxes sat just under the same cliff.
+
+The fix is that a flash chunk now carries a name, its chunk index, and
+memberlist replaces a queued broadcast when a new one arrives under the
+same name. This is correct because a flash is a snapshot: every flash
+restates the lantern's entire view, so a queued older chunk holds nothing
+the newer one does not carry, and retransmitting it would only crowd out
+fresh news. The push-registration envelope follows the same rule. One-off
+payloads, farewells and forgets, stay unnamed and are never superseded:
+they are said once and must be heard. The queue on a healthy lantern now
+holds at most one flash's worth of chunks, and a lantern whose queue still
+backs up says so in a log line instead of quietly eating its host.
+
 ## Tuning the flash interval for larger fleets
 
 `-interval` (default 2s) is the cadence a lantern flashes and runs its cheap

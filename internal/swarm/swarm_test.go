@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"github.com/hashicorp/memberlist"
 	"io"
 	"log"
 	"testing"
@@ -63,4 +64,57 @@ func TestReapForgetsDeadUndeclaredNodes(t *testing.T) {
 			t.Error("a revived node kept its death stamp")
 		}
 	})
+}
+
+// newQueueForTest mirrors the production queue settings against a swarm
+// that never drains, which is exactly the condition on a host whose gossip
+// falls behind: enqueue keeps running, transmissions do not.
+func newQueueForTest() *Swarm {
+	return &Swarm{
+		queue: &memberlist.TransmitLimitedQueue{
+			NumNodes:       func() int { return 6 },
+			RetransmitMult: 4,
+		},
+		log: log.New(io.Discard, "", 0),
+	}
+}
+
+func TestFlashNamedSupersedesQueuedChunk(t *testing.T) {
+	s := newQueueForTest()
+	// Two full flashes of eight chunks each, nothing draining in between.
+	// The second flash must replace the first in the queue, not stack on
+	// top of it: unbounded stacking is the leak that ate gigabytes on two
+	// real hosts.
+	for flash := 0; flash < 2; flash++ {
+		for i := 0; i < 8; i++ {
+			s.FlashNamed("flash/"+string(rune('0'+i)), []byte{byte(flash), byte(i)})
+		}
+		s.FlashNamed("push", []byte{byte(flash)})
+	}
+	if got := s.queue.NumQueued(); got != 9 {
+		t.Fatalf("queue holds %d payloads after two undrained flashes, want 9 (8 chunks + push)", got)
+	}
+}
+
+func TestFlashNamedKeepsTheFresherPayload(t *testing.T) {
+	s := newQueueForTest()
+	s.FlashNamed("flash/0", []byte("stale"))
+	s.FlashNamed("flash/0", []byte("fresh"))
+	got := s.queue.GetBroadcasts(0, 1400)
+	if len(got) != 1 || string(got[0]) != "fresh" {
+		t.Fatalf("queue transmitted %q, want the fresher payload only", got)
+	}
+}
+
+func TestOneOffFlashIsNotSuperseded(t *testing.T) {
+	s := newQueueForTest()
+	// Farewells and forgets are one-offs: a later flash chunk must never
+	// knock them out of the queue before they have been heard.
+	s.Flash([]byte(`{"forget":"cert example.com:443"}`))
+	for i := 0; i < 3; i++ {
+		s.FlashNamed("flash/0", []byte{byte(i)})
+	}
+	if got := s.queue.NumQueued(); got != 2 {
+		t.Fatalf("queue holds %d payloads, want 2 (the forget and one chunk)", got)
+	}
 }

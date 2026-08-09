@@ -75,6 +75,8 @@ type Swarm struct {
 	// leave). The reaper forgets it after a long grace; declared members
 	// never get a stamp and are never reaped.
 	died map[string]time.Time
+	// backlogWarned rate-limits the gossip-backlog warning.
+	backlogWarned time.Time
 
 	stop chan struct{}
 }
@@ -397,10 +399,45 @@ func (s *Swarm) Roster() []string {
 	return names
 }
 
-// Flash queues a payload for gossip. memberlist fans it out to a constant
-// sample of peers per round, never to everyone at once.
+// Flash queues a one-off payload for gossip (a farewell, a forget).
+// memberlist fans it out to a constant sample of peers per round, never to
+// everyone at once.
 func (s *Swarm) Flash(payload []byte) {
 	s.queue.QueueBroadcast(broadcast{payload: payload})
+	s.warnBacklog()
+}
+
+// FlashNamed queues a payload that supersedes any queued payload carrying
+// the same name. The periodic flash uses this: a flash chunk is a snapshot
+// of this lantern's whole view, so once a fresher one exists, spending
+// gossip bandwidth on the old one is worse than useless. Without the name,
+// a lantern whose enqueue rate outruns its gossip drain (a slow box, a
+// long watch list) accumulates stale chunks without bound; that queue ate
+// gigabytes on two real hosts before it was found.
+func (s *Swarm) FlashNamed(name string, payload []byte) {
+	s.queue.QueueBroadcast(namedBroadcast{name: name, payload: payload})
+	s.warnBacklog()
+}
+
+// warnBacklog tells the operator when the gossip queue stops draining. A
+// healthy queue holds a handful of payloads; hundreds mean flashes are
+// piling up faster than they leave, which starves peers of fresh
+// observations and eats memory. Rate-limited to one line a minute.
+func (s *Swarm) warnBacklog() {
+	const backlogWarn = 200
+	n := s.queue.NumQueued()
+	if n < backlogWarn {
+		return
+	}
+	s.mu.Lock()
+	due := time.Since(s.backlogWarned) >= time.Minute
+	if due {
+		s.backlogWarned = time.Now()
+	}
+	s.mu.Unlock()
+	if due {
+		s.log.Printf("gossip backlog is %d payloads and not draining; flashes are piling up faster than they reach the swarm", n)
+	}
 }
 
 // Leave announces a graceful departure and shuts the gossip layer down.
@@ -441,6 +478,19 @@ type broadcast struct{ payload []byte }
 func (b broadcast) Invalidates(memberlist.Broadcast) bool { return false }
 func (b broadcast) Message() []byte                       { return b.payload }
 func (b broadcast) Finished()                             {}
+
+// namedBroadcast is a broadcast that replaces its queued predecessor of the
+// same name. memberlist keys these in a map, so superseding is O(1) instead
+// of the full-queue walk unnamed broadcasts pay on every enqueue.
+type namedBroadcast struct {
+	name    string
+	payload []byte
+}
+
+func (b namedBroadcast) Name() string                          { return b.name }
+func (b namedBroadcast) Invalidates(memberlist.Broadcast) bool { return false }
+func (b namedBroadcast) Message() []byte                       { return b.payload }
+func (b namedBroadcast) Finished()                             {}
 
 // delegate carries flashes over memberlist's gossip messages.
 type delegate struct{ s *Swarm }

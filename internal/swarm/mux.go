@@ -55,7 +55,10 @@ func newMuxTransport(bindAddr string, bindPort int, handler http.Handler, logger
 		// ReadHeaderTimeout bounds a client that opens a connection and
 		// then goes quiet: classification only covers the first byte, so
 		// the HTTP server needs its own deadline for the rest.
-		srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+		// IdleTimeout bounds a keep-alive client that never comes back;
+		// this port faces the internet, and scanners leave connections
+		// parked.
+		srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second}
 		go srv.Serve(t.httpLn)
 	}
 	go t.route()

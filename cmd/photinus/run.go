@@ -42,6 +42,7 @@ func runCmd(args []string) error {
 	interval := fs.Duration("interval", 2*time.Second, "time between flashes; 2s suits a small fleet, raise it (e.g. 5s) on a large or small-hardware fleet to cut gossip and check load roughly in proportion. Reactivity barely changes: dead-lantern detection is memberlist's, separate from this, and the alert delay dominates the rest. The panel's own liveness thresholds scale off it, so set the same value on every box")
 	skewMax := fs.Duration("skew-max", 5*time.Second, "peer clock drift that trips the skew check, 0 disables it")
 	alertDelay := fs.Duration("alert-delay", 2*time.Minute, "how long a subject must stay down before the first page; brief blips under this are logged but never paged, 0 pages the instant quorum agrees")
+	blackout := fs.Int("blackout", 0, "how many watched services at one address must all be down before the swarm pages about the machine instead of each service; a blackout is always page-worthy whatever tier its members carry. 0 uses the default of 3, -1 switches the rule off")
 	notifyCmd := fs.String("notify", "", "command the elected lantern runs when the swarm agrees something changed; gets kind, check, target, and a sentence as arguments (combines with -notify-url)")
 	notifyURL := fs.String("notify-url", "", "url the elected lantern POSTs to when the swarm agrees something changed; the body is a sentence, ntfy-style headers carry title, priority, and tags, so for ntfy pass the topic url like https://ntfy.example.com/photinus (combines with -notify)")
 	notifyURLToken := fs.String("notify-url-token", os.Getenv("PHOTINUS_NOTIFY_TOKEN"), "bearer token sent with every -notify-url post (defaults to $PHOTINUS_NOTIFY_TOKEN, empty sends none)")
@@ -89,7 +90,7 @@ func runCmd(args []string) error {
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 		mergeConfig(fc, set, id, bind, advertise, swarmSecret, notifyCmd, notifyURL, notifyURLToken, socket, panel, swarmToken,
 			apnsKey, apnsKeyID, apnsTeamID, apnsTopic, pushRelay,
-			interval, skewMax, alertDelay, defaults, &seeds, &watches, &expect)
+			interval, skewMax, alertDelay, blackout, defaults, &seeds, &watches, &expect)
 	}
 
 	if *id == "" {
@@ -211,6 +212,7 @@ func runCmd(args []string) error {
 		Checks:   checks,
 		Pulses:   pulses,
 		Critical: critical,
+		Blackout: *blackout,
 		Notify:   tracker,
 		Logger:   logger,
 	})

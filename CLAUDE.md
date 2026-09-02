@@ -98,6 +98,13 @@ reporting, so the words must never say down. DOWN is reserved for reachability c
 split: kinds are "down", "warning", "recovered" (up after down), and "cleared" (up
 after a warning).
 
+**A machine losing everything is not the same as a service failing.** `blackout` is not
+a watch and cannot be configured as one: it is derived, per address, from the checks'
+own connections, and it fires when every watched service at that address is down (at
+least three of them, across at least two sites; `-blackout` tunes the count, `-1`
+switches it off). It is always critical, whatever tier its members carry, because the
+tier described a service and this is the host. Nothing about it rides the wire.
+
 | Check | What it tests | Kind |
 |---|---|---|
 | **tcp** | dial a `host:port` | remote |
@@ -112,6 +119,7 @@ after a warning).
 | **net** | traffic rate on the default-route interface; reports always, warns only past an optional Mbit/s limit | local |
 | **skew** | clock drift between this lantern and the swarm's flashes | relational |
 | **lantern** | every known peer's liveness, from membership, automatic | relational |
+| **blackout** | every watched service at one address down at once: the machine, not the service | derived |
 
 **The standard local checks run by default** (`disk:/`, `cpu`, `memory`, `swap`,
 `uptime`, `net`): one binary and a seed gives a fully monitored host. `-watch` adds more

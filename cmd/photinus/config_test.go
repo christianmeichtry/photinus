@@ -97,11 +97,12 @@ func TestMergeConfig(t *testing.T) {
 		notifyURL, notifyURLToken := "", ""
 		apnsKey, apnsKeyID, apnsTeamID, apnsTopic, pushRelay := "", "", "", "", ""
 		interval, skewMax, alertDelay := 2*time.Second, 5*time.Second, 2*time.Minute
+		blackout := 0
 		defaults := true
 		var seeds, watches, expect stringList
 		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &swarmSecret, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &swarmToken,
 			&apnsKey, &apnsKeyID, &apnsTeamID, &apnsTopic, &pushRelay,
-			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
+			&interval, &skewMax, &alertDelay, &blackout, &defaults, &seeds, &watches, &expect)
 		if id != "filebox" || swarmSecret != "file key" || interval != 9*time.Second || defaults || len(seeds) != 1 {
 			t.Errorf("file values not applied: id=%q secret=%q interval=%v defaults=%v seeds=%v",
 				id, swarmSecret, interval, defaults, seeds)
@@ -117,13 +118,14 @@ func TestMergeConfig(t *testing.T) {
 		notifyURL, notifyURLToken := "", ""
 		apnsKey, apnsKeyID, apnsTeamID, apnsTopic, pushRelay := "", "", "", "", ""
 		interval, skewMax, alertDelay := 4*time.Second, 5*time.Second, 2*time.Minute
+		blackout := 0
 		defaults := true
 		seeds := stringList{"flag:7946"}
 		var watches, expect stringList
 		set := map[string]bool{"id": true, "swarm-secret": true, "interval": true, "defaults": true, "seed": true}
 		mergeConfig(fc, set, &id, &bind, &advertise, &swarmSecret, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &swarmToken,
 			&apnsKey, &apnsKeyID, &apnsTeamID, &apnsTopic, &pushRelay,
-			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
+			&interval, &skewMax, &alertDelay, &blackout, &defaults, &seeds, &watches, &expect)
 		if id != "flagbox" || swarmSecret != "flag key" || interval != 4*time.Second || !defaults || seeds[0] != "flag:7946" {
 			t.Errorf("flag values overridden by the file: id=%q secret=%q interval=%v defaults=%v seeds=%v",
 				id, swarmSecret, interval, defaults, seeds)
@@ -138,11 +140,12 @@ func TestMergeConfig(t *testing.T) {
 		notifyURL, notifyURLToken := "", ""
 		apnsKey, apnsKeyID, apnsTeamID, apnsTopic, pushRelay := "", "", "", "", ""
 		interval, skewMax, alertDelay := 2*time.Second, 5*time.Second, 2*time.Minute
+		blackout := 0
 		defaults := true
 		var seeds, watches, expect stringList
 		mergeConfig(fc, map[string]bool{}, &id, &bind, &advertise, &swarmSecret, &notifyCmd, &notifyURL, &notifyURLToken, &socket, &panel, &swarmToken,
 			&apnsKey, &apnsKeyID, &apnsTeamID, &apnsTopic, &pushRelay,
-			&interval, &skewMax, &alertDelay, &defaults, &seeds, &watches, &expect)
+			&interval, &skewMax, &alertDelay, &blackout, &defaults, &seeds, &watches, &expect)
 		if swarmSecret != "file key" {
 			t.Errorf("secret = %q, want the file's word over the environment's", swarmSecret)
 		}

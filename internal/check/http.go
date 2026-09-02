@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"time"
 )
@@ -37,6 +38,13 @@ func (h HTTP) Run(ctx context.Context) Result {
 	}
 	req.Header.Set("User-Agent", "photinus")
 
+	// Note which machine answered. A redirect chain reports the last hop,
+	// which is the one the verdict is about.
+	var addr string
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
+		GotConn: func(i httptrace.GotConnInfo) { addr = hostOf(i.Conn.RemoteAddr()) },
+	}))
+
 	start := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -46,16 +54,16 @@ func (h HTTP) Run(ctx context.Context) Result {
 		if idx := strings.LastIndex(reason, ": "); idx >= 0 {
 			reason = reason[idx+2:]
 		}
-		return Result{Verdict: Failed, Detail: "cannot fetch: " + reason}
+		return Result{Verdict: Failed, Detail: "cannot fetch: " + reason, Addr: addr}
 	}
 	defer resp.Body.Close()
 	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 
 	elapsed := time.Since(start).Round(time.Millisecond)
 	if resp.StatusCode >= 400 {
-		return Result{Verdict: Failed, Detail: fmt.Sprintf("answered %s", resp.Status)}
+		return Result{Verdict: Failed, Detail: fmt.Sprintf("answered %s", resp.Status), Addr: addr}
 	}
-	return Result{Verdict: OK, Detail: fmt.Sprintf("%s in %s", resp.Status, elapsed)}
+	return Result{Verdict: OK, Detail: fmt.Sprintf("%s in %s", resp.Status, elapsed), Addr: addr}
 }
 
 // Every keeps the fleet polite: a TLS handshake against a production site

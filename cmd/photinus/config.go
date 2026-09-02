@@ -34,6 +34,7 @@ type fileConfig struct {
 	Interval       duration `yaml:"interval"`
 	SkewMax        duration `yaml:"skew_max"`
 	AlertDelay     duration `yaml:"alert_delay"`
+	Blackout       int      `yaml:"blackout"`
 	Notify         string   `yaml:"notify"`
 	NotifyURL      string   `yaml:"notify_url"`
 	NotifyURLToken string   `yaml:"notify_url_token"`
@@ -110,7 +111,7 @@ func loadConfig(path string) (*fileConfig, error) {
 func mergeConfig(fc *fileConfig, set map[string]bool,
 	id, bind, advertise, swarmSecret, notifyCmd, notifyURL, notifyURLToken, socket, panel, swarmToken *string,
 	apnsKey, apnsKeyID, apnsTeamID, apnsTopic, pushRelay *string,
-	interval, skewMax, alertDelay *time.Duration, defaults *bool,
+	interval, skewMax, alertDelay *time.Duration, blackout *int, defaults *bool,
 	seeds, watches, expect *stringList) {
 
 	str := func(flagName string, dst *string, v string) {
@@ -138,6 +139,9 @@ func mergeConfig(fc *fileConfig, set map[string]bool,
 	}
 	if !set["skew-max"] && fc.SkewMax != 0 {
 		*skewMax = time.Duration(fc.SkewMax)
+	}
+	if !set["blackout"] && fc.Blackout != 0 {
+		*blackout = fc.Blackout
 	}
 	if !set["alert-delay"] && fc.AlertDelay != 0 {
 		*alertDelay = time.Duration(fc.AlertDelay)

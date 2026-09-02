@@ -843,6 +843,60 @@ they are said once and must be heard. The queue on a healthy lantern now
 holds at most one flash's worth of chunks, and a lantern whose queue still
 backs up says so in a log line instead of quietly eating its host.
 
+## Blackout: many services at one address going dark together (0.1.13)
+
+Earned on 2026-08-31. A graceful reload wedged apache on one host and took
+every vhost with it for close to eight hours. photinus saw all of it: every
+watched site was convicted down within a minute and sat red on the panel
+the whole morning. Not one page went out, and the tier policy was right to
+withhold them, because each of those sites was marked routine and a routine
+site having a bad morning is exactly what the operator asked not to be
+woken for.
+
+The hole is not in the policy but in what the policy is allowed to see. A
+tier answers "does this subject deserve a page", one subject at a time, and
+that is the right question for one subject. It is the wrong question for a
+machine. Nine routine sites are nine small matters; nine routine sites on
+one host all falling silent in the same minute is one large one, and no
+subject carries that fact, because the fact is about the group. So the
+lantern reads it off the group: when every watched service at one address
+is down, that is a **blackout**, and a blackout pages whatever tier its
+members carry.
+
+**Where the grouping comes from.** Each check already dials its target, so
+it already knows which machine answered; it now reports that address
+alongside its verdict and the lantern remembers it per subject. Nothing is
+declared, nothing is configured, and nothing has to be kept in step with
+reality: move a site to another host and the grouping follows on the next
+successful probe. The address is remembered from the last probe that got
+far enough to learn it, which is what makes the rule work at all, since at
+the moment a machine goes dark nothing can be resolved from it any more.
+
+**Nothing new rides the wire.** Every lantern already holds the swarm's
+verdicts and its own address book, which is all the rule reads, so a
+blackout is derived from local memory (rule 2) and the wire format is
+untouched. The blackout becomes a synthetic subject, `blackout <address>`,
+handed to the notification tracker with the others, so it inherits the
+alert delay, the flap damping, the hash election and the recovery notice
+without a line of new notification code. Two lanterns with genuinely
+different DNS answers would group differently and could each page; that
+costs a duplicate in a rare case, which beats inventing a second agreement
+protocol to prevent it.
+
+**The rule is deliberately strict**, because it pages: every watched
+subject at the address must be down, there must be at least three of them
+(`-blackout`, `-1` switches it off), and they must span at least two
+distinct sites, since two subjects are usually the http and the cert of one
+site and one site is not a machine. A partly broken host still has
+something answering, and that is the per-subject case the tiers already
+handle correctly. A subject nobody has a live word on blocks the call
+rather than helping it: silence is not evidence of darkness.
+
+What this replaces is the canary, the workaround of marking one site on a
+host critical so that the host's death has a voice. The canary also pages
+for its own troubles, which is a page the operator did not want; the
+blackout rule pages for the machine only.
+
 ## Tuning the flash interval for larger fleets
 
 `-interval` (default 2s) is the cadence a lantern flashes and runs its cheap

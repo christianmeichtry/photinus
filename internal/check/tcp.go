@@ -36,8 +36,9 @@ func (t TCP) Run(ctx context.Context) Result {
 		}
 		return Result{Verdict: Failed, Detail: fmt.Sprintf("cannot connect: %s", reason)}
 	}
+	addr := hostOf(conn.RemoteAddr())
 	conn.Close()
-	return Result{Verdict: OK, Detail: fmt.Sprintf("connected to %s", t.Addr)}
+	return Result{Verdict: OK, Detail: fmt.Sprintf("connected to %s", t.Addr), Addr: addr}
 }
 
 // Every keeps port probes of other people's boxes to a civil rate. Host

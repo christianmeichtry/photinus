@@ -44,6 +44,7 @@ func (c Cert) Run(ctx context.Context) Result {
 	if err != nil {
 		return Result{Verdict: Failed, Detail: "cannot connect: " + err.Error()}
 	}
+	addr := hostOf(raw.RemoteAddr())
 	conn := tls.Client(raw, &tls.Config{ServerName: host})
 	defer conn.Close()
 	if err := conn.HandshakeContext(ctx); err != nil {
@@ -52,14 +53,16 @@ func (c Cert) Run(ctx context.Context) Result {
 		// down.
 		reason := err.Error()
 		reason = strings.TrimPrefix(reason, "tls: failed to verify certificate: ")
-		return Result{Verdict: Failed, Detail: "certificate refused: " + reason}
+		return Result{Verdict: Failed, Detail: "certificate refused: " + reason, Addr: addr}
 	}
 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		return Result{Verdict: Failed, Detail: "no certificate presented"}
+		return Result{Verdict: Failed, Detail: "no certificate presented", Addr: addr}
 	}
-	return certVerdict(certs[0], c.warnWithin(), time.Now())
+	res := certVerdict(certs[0], c.warnWithin(), time.Now())
+	res.Addr = addr
+	return res
 }
 
 func (c Cert) warnWithin() time.Duration {

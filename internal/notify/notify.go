@@ -40,11 +40,13 @@ type Sender func(Event)
 // handing it on. A subject is critical when the operator marked its watch
 // critical, or when it is the mesh watching itself: a lantern going dark
 // means monitoring coverage is degraded, and that always outranks whatever
-// the dead box was watching. The set keys on "check target", the same
-// subject key quorum uses.
+// the dead box was watching. A blackout is critical for the same kind of
+// reason: it is not a service failing but a machine losing all of them,
+// and the tier its members were given never described that. The set keys
+// on "check target", the same subject key quorum uses.
 func Critical(subjects map[string]bool, next Sender) Sender {
 	return func(e Event) {
-		e.Critical = subjects[e.Check+" "+e.Target] || e.Check == "lantern"
+		e.Critical = subjects[e.Check+" "+e.Target] || e.Check == "lantern" || e.Check == "blackout"
 		next(e)
 	}
 }
@@ -323,6 +325,22 @@ func (t *Tracker) event(d quorum.Decision, kind string) Event {
 }
 
 func sentence(d quorum.Decision, kind string) string {
+	// A blackout is about a machine, not a service, and its votes count
+	// dark services rather than agreeing lanterns. Its members already
+	// reached quorum one by one, so repeating the quorum arithmetic here
+	// would say something untrue about how it was decided.
+	if d.Check == "blackout" {
+		switch kind {
+		case "down":
+			s := "blackout at " + d.Target
+			if d.Detail != "" {
+				s += ": " + d.Detail
+			}
+			return s
+		case "recovered":
+			return "blackout at " + d.Target + " is over, its services are answering again"
+		}
+	}
 	base := fmt.Sprintf("%s on %s", d.Check, d.Target)
 	switch kind {
 	case "down":

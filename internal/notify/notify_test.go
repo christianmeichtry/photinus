@@ -413,6 +413,9 @@ func TestCriticalStamping(t *testing.T) {
 		{"a marked watch is critical", Event{Kind: "down", Check: "http", Target: "https://client.example"}, true},
 		{"an unmarked watch is routine", Event{Kind: "down", Check: "http", Target: "https://blog.example"}, false},
 		{"lantern liveness is always critical", Event{Kind: "down", Check: "lantern", Target: "ewok"}, true},
+		// The members of a blackout are routine by definition: the operator
+		// marked each site routine, never the machine losing all of them.
+		{"a blackout is always critical", Event{Kind: "down", Check: "blackout", Target: "178.105.34.71"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -451,5 +454,33 @@ func TestPushOnly(t *testing.T) {
 				t.Errorf("sent = %v, want %v", sent, tt.sent)
 			}
 		})
+	}
+}
+
+// TestBlackoutPagesThoughItsMembersAreRoutine is the 2026-08-31 morning in
+// one test: a host takes every watched site with it, not one of them is
+// marked critical, and the operator must still be woken about the machine.
+func TestBlackoutPagesThoughItsMembersAreRoutine(t *testing.T) {
+	var pushed []Event
+	// No watch is marked critical here, exactly as the fleet had it.
+	send := Critical(map[string]bool{}, PushOnly(func(e Event) { pushed = append(pushed, e) }))
+	tr := New("bespin", 0, 0, send, nil)
+	alive := []string{"bespin"}
+	now := time.Now()
+	routine := quorum.Decision{Check: "http", Target: "https://agence360.ch", State: quorum.StateDown,
+		Votes: 1, Voters: 1, Needed: 1}
+	dark := quorum.Decision{Check: "blackout", Target: "178.105.34.71", State: quorum.StateDown,
+		Detail: "every watched service at this address is down, 6 across 3 sites", Votes: 6, Voters: 6, Needed: 3}
+
+	tr.Observe([]quorum.Decision{routine, dark}, alive, now)
+
+	if len(pushed) != 1 {
+		t.Fatalf("pushed %d events, want exactly the blackout: %+v", len(pushed), pushed)
+	}
+	if pushed[0].Check != "blackout" {
+		t.Errorf("pushed %q, want the blackout; the routine site must stay on the panel", pushed[0].Check)
+	}
+	if !strings.Contains(pushed[0].Detail, "blackout at 178.105.34.71") {
+		t.Errorf("detail %q does not name the dark machine", pushed[0].Detail)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 )
 
@@ -26,6 +27,20 @@ func humanBytes(n uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// hostOf takes the host out of a connection's remote address, dropping the
+// port. Nil or unparseable addresses yield the empty string, which simply
+// means this check contributes no grouping information.
+func hostOf(a net.Addr) string {
+	if a == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(a.String())
+	if err != nil {
+		return ""
+	}
+	return host
 }
 
 // Verdict is the outcome of running a check once.
@@ -65,6 +80,13 @@ func (v Verdict) String() string {
 type Result struct {
 	Verdict Verdict
 	Detail  string
+	// Addr is the address the check actually reached, host only, no port.
+	// Remote checks fill it whenever a connection got far enough to know
+	// it; a check that never connected leaves it empty. It is not part of
+	// the verdict and never reaches the operator: the lantern remembers it
+	// to tell which watched services share one machine, so that many of
+	// them dying at once can be recognised as one failure instead of many.
+	Addr string
 }
 
 // Paced is implemented by checks too heavy or too slow-moving to run every

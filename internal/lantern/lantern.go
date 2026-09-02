@@ -42,6 +42,11 @@ type Config struct {
 	// worth interrupting a day for. It only decorates status answers;
 	// enforcement lives in the notify senders.
 	Critical map[string]bool
+	// Blackout is how many watched subjects at one address must all be
+	// down before the swarm calls it a blackout and pages about the
+	// machine rather than about each service. Zero means the default of
+	// three; a negative value switches the rule off.
+	Blackout int
 	// Notify, when set, is fed the swarm's decisions after every flash so
 	// the elected lantern can send the one notification. Nil means no
 	// notifications from this lantern.
@@ -59,9 +64,12 @@ type Lantern struct {
 	checks   []check.Check
 	pulses   map[string]time.Duration
 	critical map[string]bool
-	start    time.Time
-	notify   *notify.Tracker
-	log      *log.Logger
+	// blackoutMin is how many dark subjects at one address make a blackout.
+	// Zero switches the rule off.
+	blackoutMin int
+	start       time.Time
+	notify      *notify.Tracker
+	log         *log.Logger
 
 	mu          sync.Mutex
 	store       map[string]quorum.Observation
@@ -74,6 +82,7 @@ type Lantern struct {
 	pulseWarned map[string]bool
 	departed    map[string]time.Time
 	forgotten   map[string]time.Time // subject -> when the operator retired it
+	addrs       map[string]string    // subject -> the address its check last reached
 	badVersions map[int]bool
 	pushRegs    map[string]notify.PushRegistration
 	sw          *swarm.Swarm
@@ -93,6 +102,15 @@ func New(cfg Config) *Lantern {
 	if logger == nil {
 		logger = log.New(io.Discard, "", 0)
 	}
+	// Zero means the default; a negative value is the operator switching
+	// the rule off, which must not read as "use the default".
+	blackoutMin := cfg.Blackout
+	switch {
+	case blackoutMin == 0:
+		blackoutMin = defaultBlackout
+	case blackoutMin < 0:
+		blackoutMin = 0
+	}
 	return &Lantern{
 		id:          cfg.ID,
 		interval:    interval,
@@ -101,6 +119,7 @@ func New(cfg Config) *Lantern {
 		checks:      cfg.Checks,
 		pulses:      cfg.Pulses,
 		critical:    cfg.Critical,
+		blackoutMin: blackoutMin,
 		start:       time.Now().UTC(),
 		notify:      cfg.Notify,
 		log:         logger,
@@ -114,6 +133,7 @@ func New(cfg Config) *Lantern {
 		pulseWarned: make(map[string]bool),
 		departed:    make(map[string]time.Time),
 		forgotten:   make(map[string]time.Time),
+		addrs:       make(map[string]string),
 		badVersions: make(map[int]bool),
 		pushRegs:    make(map[string]notify.PushRegistration),
 	}
@@ -207,6 +227,15 @@ func (l *Lantern) flash(ctx context.Context) {
 		if paced {
 			l.lastVerdict[key] = res.Verdict
 		}
+		if res.Addr != "" {
+			// Remember where this subject lives. Kept from the last probe
+			// that got far enough to know, so a check that is failing now
+			// still groups with its neighbours: at the moment a machine
+			// goes dark, nothing can be resolved from it any more.
+			l.mu.Lock()
+			l.addrs[c.Name()+" "+c.Target()] = res.Addr
+			l.mu.Unlock()
+		}
 		var state string
 		switch res.Verdict {
 		case check.OK:
@@ -295,12 +324,13 @@ func (l *Lantern) flash(ctx context.Context) {
 	// With the flash out, look at what the swarm now agrees on and let the
 	// elected lantern notify. Every lantern runs this; only the winner acts.
 	if l.notify != nil || len(l.pulses) > 0 {
-		st := l.Status()
+		st, blackouts := l.statusAndBlackouts()
 		if l.notify != nil {
-			decisions := make([]quorum.Decision, len(st.Subjects))
-			for i, s := range st.Subjects {
-				decisions[i] = s.Decision
+			decisions := make([]quorum.Decision, 0, len(st.Subjects)+len(blackouts))
+			for _, s := range st.Subjects {
+				decisions = append(decisions, s.Decision)
 			}
+			decisions = append(decisions, blackouts...)
 			l.notify.Observe(decisions, st.Swarm, now)
 		}
 		l.warnUnderDeclaredPulses(st)
@@ -593,6 +623,22 @@ type Status struct {
 // Status answers from local memory. It makes no network calls and must never
 // need to: if answering requires talking to another machine, it is broken.
 func (l *Lantern) Status() Status {
+	st, blackouts := l.statusAndBlackouts()
+	// The panel and the app hear about a blackout only while it is dark:
+	// a lantern does not announce good news.
+	for _, d := range blackouts {
+		if d.State == quorum.StateDown {
+			st.Subjects = append(st.Subjects, SubjectStatus{Decision: d, Critical: true})
+		}
+	}
+	return st
+}
+
+// statusAndBlackouts is Status without the blackout subjects folded in,
+// plus every blackout-capable address as its own decision, dark or not.
+// The notification tracker needs the healthy ones too, or an alarm it
+// opened could never be closed.
+func (l *Lantern) statusAndBlackouts() (Status, []quorum.Decision) {
 	now := time.Now().UTC()
 
 	l.mu.Lock()
@@ -642,7 +688,17 @@ func (l *Lantern) Status() Status {
 		return a.Target < b.Target
 	})
 
-	return st
+	// A whole address gone dark is its own subject, derived from the ones
+	// above and always critical: the operator marked the members routine
+	// one by one, never the machine losing all of them at once.
+	l.mu.Lock()
+	addrs := make(map[string]string, len(l.addrs))
+	for k, v := range l.addrs {
+		addrs[k] = v
+	}
+	l.mu.Unlock()
+
+	return st, blackout(st.Subjects, addrs, l.blackoutMin)
 }
 
 // flashObsLimit is what one observation may occupy inside a flash chunk,

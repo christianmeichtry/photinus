@@ -68,24 +68,44 @@ type envelope struct {
 	Leave  string                    `json:"leave,omitempty"`
 	Forget string                    `json:"forget,omitempty"`
 	Push   []notify.PushRegistration `json:"push,omitempty"`
+	// From and Sent name the lantern that put this envelope on the wire and
+	// the moment it did so by its own clock. They are what the skew check
+	// measures: arrival minus Sent is the clock offset plus transit delay.
+	// Nothing else may serve as a clock sample, because an observation's
+	// timestamp is the moment the thing was observed, not the moment it was
+	// sent, and the two differ by a check's whole cadence or, for a pulse
+	// receipt, by however long ago the job pinged. Additive since wire v1:
+	// an older lantern omits them and is left unmeasured rather than
+	// measured wrongly.
+	From string     `json:"from,omitempty"`
+	Sent *time.Time `json:"sent,omitempty"`
 }
 
 // chunkFlash splits observations into payloads that each fit inside one UDP
 // gossip packet. A flash that outgrows the packet would never leave the
 // queue, and the failure would be silence, so the size limit is enforced
-// here where it can be tested.
-func chunkFlash(obs []quorum.Observation, limit int) [][]byte {
+// here where it can be tested. Every chunk carries the sender and the send
+// time: they are small, and a receiver that dropped all but one chunk still
+// gets its clock sample.
+func chunkFlash(from string, sent time.Time, obs []quorum.Observation, limit int) [][]byte {
 	var payloads [][]byte
 	var batch []quorum.Observation
-	size := 16 // the envelope around the batch
+	// Measure the envelope around the batch instead of guessing it: From and
+	// Sent made it big enough that a wrong guess could push a chunk past the
+	// packet budget, and an oversized chunk is never transmitted at all.
+	base := 16
+	if b, err := json.Marshal(envelope{V: flashV, From: from, Sent: &sent}); err == nil {
+		base = len(b)
+	}
+	size := base
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
-		if payload, err := json.Marshal(envelope{V: flashV, Obs: batch}); err == nil {
+		if payload, err := json.Marshal(envelope{V: flashV, From: from, Sent: &sent, Obs: batch}); err == nil {
 			payloads = append(payloads, payload)
 		}
-		batch, size = nil, 16
+		batch, size = nil, base
 	}
 	for _, o := range obs {
 		b, err := json.Marshal(o)

@@ -74,7 +74,6 @@ type Lantern struct {
 	mu          sync.Mutex
 	store       map[string]quorum.Observation
 	clocks      map[string]*peerClock
-	lastSeen    map[string]time.Time
 	lastRun     map[string]time.Time
 	lastVerdict map[string]check.Verdict
 	lastPulse   map[string]time.Time
@@ -125,7 +124,6 @@ func New(cfg Config) *Lantern {
 		log:         logger,
 		store:       make(map[string]quorum.Observation),
 		clocks:      make(map[string]*peerClock),
-		lastSeen:    make(map[string]time.Time),
 		lastRun:     make(map[string]time.Time),
 		lastVerdict: make(map[string]check.Verdict),
 		lastPulse:   make(map[string]time.Time),
@@ -164,7 +162,8 @@ func (l *Lantern) SyncState() []byte {
 		regs = append(regs, r)
 	}
 	l.mu.Unlock()
-	payload, err := json.Marshal(envelope{V: flashV, Obs: obs, Push: regs})
+	sent := time.Now().UTC()
+	payload, err := json.Marshal(envelope{V: flashV, From: l.id, Sent: &sent, Obs: obs, Push: regs})
 	if err != nil {
 		return nil
 	}
@@ -310,7 +309,7 @@ func (l *Lantern) flash(ctx context.Context) {
 		// the gossip queue: every flash carries the whole view, so a
 		// queued older chunk holds nothing the newer flash does not
 		// restate, and retransmitting it would only crowd out fresh news.
-		for i, payload := range chunkFlash(own, 1000) {
+		for i, payload := range chunkFlash(l.id, now, own, 1000) {
 			sw.FlashNamed("flash/"+strconv.Itoa(i), payload)
 		}
 		// Phone registrations ride their own small envelope, so a token a
@@ -413,9 +412,18 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 			l.mergePush(env.Push)
 			l.mu.Unlock()
 		}
+		// The one place a clock sample may come from. An envelope is on the
+		// wire now, so arrival minus Sent is the offset plus transit; an
+		// observation inside it may be a paced check from minutes ago or a
+		// pulse receipt from days ago, and reading either as a send time
+		// reports a healthy clock as hours adrift.
+		if env.From != "" && env.From != l.id && env.Sent != nil && !env.Sent.IsZero() {
+			l.mu.Lock()
+			l.observeClock(env.From, env.Sent.UTC(), time.Now().UTC())
+			l.mu.Unlock()
+		}
 		obs = env.Obs
 	}
-	now := time.Now().UTC()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, o := range obs {
@@ -458,12 +466,6 @@ func (l *Lantern) ReceiveFlash(payload []byte) {
 		// baseline even after the receipt observation itself ages out.
 		if o.Check == "pulse" && o.State == quorum.StateUp && o.Seen.After(l.lastPulse[o.Target]) {
 			l.lastPulse[o.Target] = o.Seen
-		}
-		// A flash stamped later than anything heard from this observer is a
-		// fresh clock sample; re-gossiped old flashes are not.
-		if l.skewMax > 0 && o.Seen.After(l.lastSeen[o.Observer]) {
-			l.lastSeen[o.Observer] = o.Seen
-			l.observeClock(o.Observer, o.Seen, now)
 		}
 	}
 }
@@ -543,7 +545,6 @@ func (l *Lantern) forget(name string) {
 	// departure is refused; anything newer means the lantern came back.
 	l.departed[name] = time.Now().UTC()
 	delete(l.clocks, name)
-	delete(l.lastSeen, name)
 	sw := l.sw
 	l.mu.Unlock()
 	if sw != nil {

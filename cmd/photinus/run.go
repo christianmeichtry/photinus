@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -481,6 +483,53 @@ func parsePercent(rest string) (float64, error) {
 
 func defaultSocket(id string) string {
 	return fmt.Sprintf("%s/photinus-%s.sock", os.TempDir(), id)
+}
+
+// resolveSocket finds the local lantern to talk to. The socket is named after
+// the lantern's id, which is usually the hostname but need not be: a Mac whose
+// hostname is "Bespin.local" can perfectly well run -id bespin, and then the
+// hostname guess points at a socket that was never created. Rather than tell
+// the operator no lantern is running while one hums along beside it, a single
+// socket in the temp dir is taken as the one meant. Several are ambiguous and
+// photinus says so instead of picking one: talking to the wrong lantern would
+// answer a question nobody asked. An id given on the command line is an
+// instruction, so it is never second-guessed.
+func resolveSocket(id string, idNamed bool) (string, error) {
+	path := defaultSocket(id)
+	if idNamed {
+		return path, nil
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "photinus-*.sock"))
+	if err != nil || len(matches) == 0 {
+		// Report the name that was expected; the caller's error reads better
+		// with it than with an empty path.
+		return path, nil
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	ids := make([]string, 0, len(matches))
+	for _, m := range matches {
+		name := filepath.Base(m)
+		ids = append(ids, strings.TrimSuffix(strings.TrimPrefix(name, "photinus-"), ".sock"))
+	}
+	sort.Strings(ids)
+	return "", fmt.Errorf("several lanterns answer here (%s), say which with -id or -socket", strings.Join(ids, ", "))
+}
+
+// flagNamed reports whether the operator actually typed this flag, as opposed
+// to it holding its default.
+func flagNamed(fs *flag.FlagSet, name string) bool {
+	named := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			named = true
+		}
+	})
+	return named
 }
 
 // serveStatus answers status queries over a local unix socket, straight from

@@ -130,3 +130,22 @@ and on any `-panel` address.
 Every down and every recovery notifies, so a box flapping on a half-open
 firewall pages twice a minute. Fix the network problem first; flap
 damping (saying "X is flapping" once instead) is on the roadmap.
+
+## `photinus status` says no lantern is answering, but one is running
+
+The status socket is named after the lantern's **id**, and a box's hostname is
+not always its id. A Mac reporting `Bespin.local` can perfectly well run
+`-id bespin`, and the two names do not meet.
+
+Since 0.1.15 this resolves itself: when you name no `-id` and the socket for
+the hostname is missing, photinus uses the single lantern socket it finds in
+the temp directory. If there are several, it lists them and asks which one,
+because answering from the wrong lantern is worse than asking. An `-id` you
+typed yourself is never second-guessed.
+
+On an older binary, pass the socket by hand:
+
+```sh
+photinus status -id bespin
+photinus status -socket "$TMPDIR/photinus-bespin.sock"
+```

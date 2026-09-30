@@ -1,6 +1,7 @@
 package lantern
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -102,6 +103,108 @@ func TestSkew(t *testing.T) {
 		}
 		if o.Observer == o.Target {
 			t.Error("skew observation must never look authoritative")
+		}
+	})
+}
+
+// TestSkewReadsTheSendTimeNotTheObservations pins the fix for a real fleet
+// incident: relighting a lantern made the whole swarm report its clock as
+// 33 hours adrift, because the first word heard back from it was a pulse
+// receipt stamped with the job's ping time from the previous Monday.
+//
+// Farewell clears what is known about a departed peer's clock, so on its
+// return any observation could open the measurement window, and an
+// observation's timestamp is when the thing was seen, not when it was sent.
+// The send time now rides the envelope and is the only thing measured.
+func TestSkewReadsTheSendTimeNotTheObservations(t *testing.T) {
+	now := time.Now().UTC()
+
+	flash := func(from string, sent time.Time, obs []quorum.Observation) []byte {
+		env := envelope{V: flashV, From: from, Obs: obs}
+		if !sent.IsZero() {
+			env.Sent = &sent
+		}
+		payload, err := json.Marshal(env)
+		if err != nil {
+			t.Fatalf("marshalling the flash: %v", err)
+		}
+		return payload
+	}
+	// The receipt from the incident: ewok's weekly cert cron pinged days ago,
+	// and the fact deliberately outlives its receiver's farewell.
+	staleReceipt := func(observer string) []quorum.Observation {
+		return []quorum.Observation{{
+			Observer: observer, Target: "ewok-certs", Check: "pulse",
+			State: quorum.StateUp, Detail: "pulsed at " + now.Add(-33*time.Hour).Format(time.RFC3339),
+			Seen: now.Add(-33 * time.Hour), TTL: 3600,
+		}}
+	}
+	skewOf := func(l *Lantern, peer string) *quorum.Observation {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		obs := l.skewObservations(time.Now().UTC())
+		for i := range obs {
+			if obs[i].Target == peer {
+				return &obs[i]
+			}
+		}
+		return nil
+	}
+
+	t.Run("a stale receipt from a returning lantern is not a clock sample", func(t *testing.T) {
+		l := New(Config{ID: "scarif", Interval: 2 * time.Second, SkewMax: 5 * time.Second})
+		l.forget("ewok") // the graceful farewell, which clears the clock table
+		l.ReceiveFlash(flash("ewok", time.Now().UTC(), staleReceipt("ewok")))
+		o := skewOf(l, "ewok")
+		if o == nil {
+			t.Fatal("no skew observation about a lantern that just flashed")
+		}
+		if o.State != quorum.StateUp {
+			t.Errorf("a returning lantern's stale receipt reported its clock as %s: %q", o.State, o.Detail)
+		}
+	})
+
+	t.Run("a paced check observed minutes ago is not a clock sample", func(t *testing.T) {
+		l := New(Config{ID: "scarif", Interval: 2 * time.Second, SkewMax: 5 * time.Second})
+		old := []quorum.Observation{{
+			Observer: "drongar", Target: "https://photinus.dev", Check: "http",
+			State: quorum.StateUp, Detail: "200 OK in 42ms", Seen: now.Add(-5 * time.Minute), TTL: 1500,
+		}}
+		l.ReceiveFlash(flash("drongar", time.Now().UTC(), old))
+		o := skewOf(l, "drongar")
+		if o == nil {
+			t.Fatal("no skew observation about a lantern that just flashed")
+		}
+		if o.State != quorum.StateUp {
+			t.Errorf("a five-minute-old http verdict reported the sender's clock as %s: %q", o.State, o.Detail)
+		}
+	})
+
+	t.Run("a genuinely wrong clock is still caught", func(t *testing.T) {
+		l := New(Config{ID: "scarif", Interval: 2 * time.Second, SkewMax: 5 * time.Second})
+		l.ReceiveFlash(flash("jawa", time.Now().UTC().Add(-90*time.Second), nil))
+		o := skewOf(l, "jawa")
+		if o == nil {
+			t.Fatal("no skew observation about a lantern that just flashed")
+		}
+		if o.State != quorum.StateWarn {
+			t.Errorf("a 90 second offset read as %s: %q", o.State, o.Detail)
+		}
+	})
+
+	t.Run("a lantern too old to send its clock is left unmeasured, not guessed", func(t *testing.T) {
+		l := New(Config{ID: "scarif", Interval: 2 * time.Second, SkewMax: 5 * time.Second})
+		l.ReceiveFlash(flash("", time.Time{}, staleReceipt("ewok")))
+		if o := skewOf(l, "ewok"); o != nil {
+			t.Errorf("an envelope without a send time produced a skew verdict anyway: %s %q", o.State, o.Detail)
+		}
+	})
+
+	t.Run("a lantern never measures its own clock", func(t *testing.T) {
+		l := New(Config{ID: "scarif", Interval: 2 * time.Second, SkewMax: 5 * time.Second})
+		l.ReceiveFlash(flash("scarif", time.Now().UTC().Add(-90*time.Second), nil))
+		if o := skewOf(l, "scarif"); o != nil {
+			t.Errorf("a lantern measured itself: %s %q", o.State, o.Detail)
 		}
 	})
 }

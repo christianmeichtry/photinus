@@ -287,7 +287,7 @@ func TestOversizedObservationsStillGossip(t *testing.T) {
 	if !strings.HasSuffix(fit.Detail, "...") || len(fit.Detail) >= 5000 {
 		t.Errorf("detail not trimmed: %d bytes", len(fit.Detail))
 	}
-	payloads := chunkFlash([]quorum.Observation{fit}, 1000)
+	payloads := chunkFlash("bespin", time.Now().UTC(), []quorum.Observation{fit}, 1000)
 	if len(payloads) != 1 || len(payloads[0]) > 1000 {
 		t.Fatalf("clamped observation still busts the packet budget: %d payloads, first %d bytes",
 			len(payloads), len(payloads[0]))

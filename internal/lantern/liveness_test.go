@@ -57,7 +57,7 @@ func TestChunkFlash(t *testing.T) {
 	}
 
 	const limit = 1000
-	payloads := chunkFlash(obs, limit)
+	payloads := chunkFlash("bespin", now, obs, limit)
 	if len(payloads) < 2 {
 		t.Fatalf("14 observations fit one packet (%d payloads), the split is not happening", len(payloads))
 	}
@@ -80,7 +80,7 @@ func TestChunkFlash(t *testing.T) {
 		t.Errorf("%d observations across all payloads, want %d: the split loses data", total, len(obs))
 	}
 
-	if got := chunkFlash(nil, limit); len(got) != 0 {
+	if got := chunkFlash("bespin", now, nil, limit); len(got) != 0 {
 		t.Errorf("no observations produced %d payloads, want none", len(got))
 	}
 }

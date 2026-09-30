@@ -64,7 +64,8 @@ func (l *Lantern) pushPayload() []byte {
 		return nil
 	}
 	sort.Slice(regs, func(i, j int) bool { return regs[i].Token < regs[j].Token })
-	payload, err := json.Marshal(envelope{V: flashV, Push: regs})
+	sent := time.Now().UTC()
+	payload, err := json.Marshal(envelope{V: flashV, From: l.id, Sent: &sent, Push: regs})
 	if err != nil {
 		return nil
 	}

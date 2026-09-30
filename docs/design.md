@@ -918,3 +918,51 @@ derives its thresholds from whichever door it queried, so a fleet running a
 mix of intervals gives ambiguous staleness. Set the same value on every box,
 or leave it at 2s, which is right until the fleet is large enough that the
 gossip actually costs something.
+
+## Skew measures the send time, not what the flash contains (0.1.14)
+
+The skew check estimates a peer's clock offset as arrival minus stamp,
+taking the minimum over a window so that transit delay, which is always
+positive, falls out. That is sound, but until 0.1.14 the "stamp" was taken
+from the observations inside the flash rather than from the flash itself,
+and those are two different moments. An observation's timestamp is when the
+thing was *seen*: a paced http check carries a verdict up to five minutes
+old, and a pulse receipt deliberately carries the moment an external job
+pinged, which can be days back.
+
+A per-observer high-water mark was supposed to keep old news out ("a flash
+stamped later than anything heard from this observer is a fresh sample").
+It does, until a lantern says farewell: the farewell path clears what is
+known about the departed peer, high-water mark included, while deliberately
+keeping its pulse receipts, because a receipt is a fact that must outlive
+its receiver. So the first word heard back from a returning lantern could be
+a receipt from last Monday, and with nothing to compare it against it opened
+the measurement window.
+
+That is not hypothetical. Relighting ewok during a routine roll made the
+swarm agree that ewok's clock was 33h16m behind, which was exactly the age
+of its weekly cert-renewal receipt. A smaller instance of the same thing had
+been sitting in the notify log for a month reading "about 5m33.7s behind",
+which was the age of a paced check. The clocks were in step the whole time.
+
+The fix is to stop inferring the send time. The flash envelope carries
+`from` and `sent`, additive within wire v1, and a clock sample is taken once
+per received envelope from those two fields and nowhere else. The
+per-observation path and its high-water mark are gone, along with the state
+they needed.
+
+A lantern too old to send `sent` is left **unmeasured** rather than guessed
+at: it simply stops appearing in skew verdicts until it is upgraded. That is
+the wire policy applied to a measurement, and during a rolling upgrade it
+means partial skew coverage for as long as the roll takes. The alternative,
+falling back to the newest observation in the envelope, would have kept
+coverage at the price of occasionally reporting a healthy clock as adrift,
+which is the failure this whole section is about.
+
+Two smaller things fall out of it. A lantern no longer measures itself:
+before the fix a restarted lantern took its own receipt back from the swarm
+and reported *its own* clock as hours adrift, which is how the incident
+first showed up on the panel. And chunking now measures the envelope instead
+of assuming sixteen bytes for it, since `from` and `sent` made a wrong guess
+able to push a chunk past the UDP budget, and an oversized chunk is never
+transmitted at all: the failure would have been silence.

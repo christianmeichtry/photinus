@@ -482,42 +482,88 @@ func parsePercent(rest string) (float64, error) {
 }
 
 func defaultSocket(id string) string {
-	return fmt.Sprintf("%s/photinus-%s.sock", os.TempDir(), id)
+	return socketFor(os.TempDir(), id)
 }
 
-// resolveSocket finds the local lantern to talk to. The socket is named after
-// the lantern's id, which is usually the hostname but need not be: a Mac whose
-// hostname is "Bespin.local" can perfectly well run -id bespin, and then the
-// hostname guess points at a socket that was never created. Rather than tell
-// the operator no lantern is running while one hums along beside it, a single
-// socket in the temp dir is taken as the one meant. Several are ambiguous and
-// photinus says so instead of picking one: talking to the wrong lantern would
-// answer a question nobody asked. An id given on the command line is an
-// instruction, so it is never second-guessed.
-func resolveSocket(id string, idNamed bool) (string, error) {
-	path := defaultSocket(id)
-	if idNamed {
+func socketFor(dir, id string) string {
+	return filepath.Join(dir, "photinus-"+id+".sock")
+}
+
+// resolveSocket finds the local lantern to talk to, inside dir. The socket is
+// named after the lantern's id, which is usually the hostname but need not be:
+// a Mac whose hostname is "Bespin.local" can perfectly well run -id bespin, and
+// then the hostname guess points at a socket that was never created. Rather
+// than tell the operator no lantern is running while one hums along beside it,
+// a single lantern that actually answers is taken as the one meant.
+//
+// Every candidate is dialed before it is believed. A socket file is not a
+// lantern: only a graceful shutdown removes it, so every kill -9 drill and
+// every disposable swarm leaves one lying in the temp directory forever, and
+// counting those would make this fallback fail precisely on the boxes that get
+// exercised most. serveStatus has dialed before trusting a socket since the
+// beginning, for the same reason.
+//
+// Candidates must also be sockets this user owns. On Linux the temp directory
+// is /tmp, mode 1777, so without that check any local user could drop a
+// photinus-x.sock there and either jam the command with a false ambiguity or
+// answer it with invented fleet state. A monitoring tool that can be made to
+// lie on purpose is worse than one that says nothing.
+//
+// Several live lanterns are ambiguous and photinus says so instead of picking
+// one: answering from the wrong lantern would answer a question nobody asked.
+// An id given on the command line is an instruction, so it is never
+// second-guessed.
+func resolveSocket(dir, id string, idNamed bool) (string, error) {
+	path := socketFor(dir, id)
+	if idNamed || answersOnSocket(path) {
 		return path, nil
 	}
-	if _, err := os.Stat(path); err == nil {
+	matches, err := filepath.Glob(filepath.Join(dir, "photinus-*.sock"))
+	if err != nil {
+		// Only a malformed pattern can get here, but report the name that was
+		// expected: the caller's error reads better with it than with none.
 		return path, nil
 	}
-	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "photinus-*.sock"))
-	if err != nil || len(matches) == 0 {
-		// Report the name that was expected; the caller's error reads better
-		// with it than with an empty path.
-		return path, nil
-	}
-	if len(matches) == 1 {
-		return matches[0], nil
-	}
-	ids := make([]string, 0, len(matches))
+	var live []string
 	for _, m := range matches {
+		if mineAndASocket(m) && answersOnSocket(m) {
+			live = append(live, m)
+		}
+	}
+	switch len(live) {
+	case 0:
+		return path, nil
+	case 1:
+		return live[0], nil
+	}
+	ids := make([]string, 0, len(live))
+	for _, m := range live {
 		name := filepath.Base(m)
 		ids = append(ids, strings.TrimSuffix(strings.TrimPrefix(name, "photinus-"), ".sock"))
 	}
 	sort.Strings(ids)
 	return "", fmt.Errorf("several lanterns answer here (%s), say which with -id or -socket", strings.Join(ids, ", "))
+}
+
+// answersOnSocket reports whether something is listening on this path right
+// now. The timeout is short: this is a local socket, and a status query must
+// stay instant.
+func answersOnSocket(path string) bool {
+	conn, err := net.DialTimeout("unix", path, 300*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// mineAndASocket reports whether the path is a socket belonging to this user.
+func mineAndASocket(path string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil || fi.Mode()&os.ModeSocket == 0 {
+		return false
+	}
+	return ownedByMe(fi)
 }
 
 // flagNamed reports whether the operator actually typed this flag, as opposed

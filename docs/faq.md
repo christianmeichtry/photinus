@@ -137,11 +137,18 @@ The status socket is named after the lantern's **id**, and a box's hostname is
 not always its id. A Mac reporting `Bespin.local` can perfectly well run
 `-id bespin`, and the two names do not meet.
 
-Since 0.1.15 this resolves itself: when you name no `-id` and the socket for
-the hostname is missing, photinus uses the single lantern socket it finds in
-the temp directory. If there are several, it lists them and asks which one,
-because answering from the wrong lantern is worse than asking. An `-id` you
-typed yourself is never second-guessed.
+Since 0.1.15 this resolves itself for a lantern whose socket is in the temp
+directory, which is every lantern started without `-socket`: when you name no
+`-id` and the socket for the hostname is missing, photinus dials each lantern
+socket it finds there and uses the one that answers. Socket files left behind
+by a `kill -9`, or by a disposable test swarm, are skipped, as is anything
+another user owns. If two lanterns really answer, it lists them and asks which
+one, because answering from the wrong lantern is worse than asking. An `-id`
+you typed yourself is never second-guessed.
+
+It does not cover a lantern whose socket lives elsewhere, for instance
+`socket: /run/photinus.sock` in a config file: `status` and `forget` do not
+read the config file, so name the socket yourself there.
 
 On an older binary, pass the socket by hand:
 

@@ -33,7 +33,7 @@ func statusCmd(args []string) error {
 	sockPath := *socket
 	if sockPath == "" {
 		var err error
-		sockPath, err = resolveSocket(*id, flagNamed(fs, "id"))
+		sockPath, err = resolveSocket(os.TempDir(), *id, flagNamed(fs, "id"))
 		if err != nil {
 			return err
 		}

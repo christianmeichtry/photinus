@@ -38,9 +38,16 @@ func forgetCmd(args []string) error {
 	sockPath := *socket
 	if sockPath == "" {
 		var err error
-		sockPath, err = resolveSocket(*id, flagNamed(fs, "id"))
+		sockPath, err = resolveSocket(os.TempDir(), *id, flagNamed(fs, "id"))
 		if err != nil {
 			return err
+		}
+		// forget writes: it tombstones the subject and gossips that to the
+		// whole swarm. status prints the lantern it reached, so a wrong guess
+		// is visible there; here it would not be. Say which lantern is about
+		// to be told whenever the name was not the one asked for.
+		if guess := socketFor(os.TempDir(), *id); sockPath != guess {
+			fmt.Fprintf(os.Stderr, "no lantern named %s here, asking the one on %s\n", *id, sockPath)
 		}
 	}
 	client := http.Client{

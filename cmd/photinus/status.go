@@ -32,7 +32,11 @@ func statusCmd(args []string) error {
 
 	sockPath := *socket
 	if sockPath == "" {
-		sockPath = defaultSocket(*id)
+		var err error
+		sockPath, err = resolveSocket(os.TempDir(), *id, flagNamed(fs, "id"))
+		if err != nil {
+			return err
+		}
 	}
 
 	client := http.Client{

@@ -966,3 +966,44 @@ first showed up on the panel. And chunking now measures the envelope instead
 of assuming sixteen bytes for it, since `from` and `sent` made a wrong guess
 able to push a chunk past the UDP budget, and an oversized chunk is never
 transmitted at all: the failure would have been silence.
+
+## Finding the local lantern (0.1.15)
+
+`status` and `forget` talk to a lantern over a unix socket named after the
+lantern's **id**. They defaulted that id to the hostname, which is wrong on any
+box where the two differ: bespin reports `Bespin.local` and runs `-id bespin`,
+so the default guess pointed at a socket that never existed and the operator
+was told no lantern was answering while a healthy one sat in the same
+directory. That is a bad answer from a tool whose second rule is that status
+must work with the network on fire.
+
+So when no `-id` was typed and the guess does not answer, the commands look at
+the lantern sockets in the temp directory and take the one that responds.
+Three things keep that from becoming its own bug:
+
+**A socket file is not a lantern.** Only a graceful shutdown unlinks the
+socket, so every `kill -9` drill and every disposable swarm leaves one behind
+forever. Counting files would make the fallback fail hardest on the boxes that
+get exercised most, and worse, report a dead name as the live one. Every
+candidate is dialed first, exactly as `serveStatus` has always dialed before
+trusting a socket it is about to replace.
+
+**Only sockets this user owns.** On Linux the temp directory is `/tmp`, mode
+1777. Globbing it means any local user can drop a `photinus-x.sock` there and
+either jam the command with a false ambiguity or answer it with invented fleet
+state. A monitoring tool that can be made to lie on purpose is worse than one
+that says nothing, so a candidate must be a socket, and must belong to the
+caller.
+
+**Two answering lanterns are a question, not a coin toss.** The command lists
+them and asks for `-id` or `-socket`. And an id typed on the command line is an
+instruction: it is never second-guessed, not even when it points at nothing.
+
+`forget` resolves the same way but announces it, because it writes: it
+tombstones a subject and gossips that swarm-wide, and `status` makes a wrong
+guess visible by printing the lantern it reached while `forget` would not.
+
+The fallback deliberately stops at the temp directory. A lantern configured
+with `socket:` somewhere else is not found, because `status` and `forget` do
+not read the config file, and guessing beyond what the file names would be
+guessing about another installation's layout.
